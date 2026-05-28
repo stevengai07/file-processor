@@ -1,0 +1,17 @@
+openai
+langchain
+langchain-openai
+langchain-community
+pypdf
+python-docx
+pydantic
+python-dotenv
+pdf2image
+pytesseract
+opencv-python
+Pillow
+numpy
+streamlit
+fastapi
+uvicorn
+python-multipart
