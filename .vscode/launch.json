@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "▶ Streamlit UI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "app_streamlit.py"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "▶ FastAPI Server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app_fastapi:app", "--reload"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "▶ CLI — Single File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "agent.py",
+      "args": ["sample.pdf", "scanner", "eng"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "▶ Batch Processor",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "batch_processor.py",
+      "args": [".\\documents", "scanner", "eng"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
