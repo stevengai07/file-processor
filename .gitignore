@@ -1,11 +1,62 @@
-@"
+# Python
 .venv/
 .env
+.env.test
 __pycache__/
 *.pyc
 *.pyo
-.DS_Store
 *.egg-info/
 dist/
 build/
-"@ | Out-File -FilePath .gitignore -Encoding utf8
+
+# OS
+.DS_Store
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node / JS (from remote)
+node_modules/
+jspm_packages/
+web_modules/
+bower_components/
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+.cache
+.parcel-cache
+.next
+out
+.nuxt
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.vscode-test
+*.tsbuildinfo
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+coverage
+*.lcov
+.nyc_output
+.grunt
+pids
+*.pid
+*.seed
+*.pid.lock
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+lib-cov
+build/Release
