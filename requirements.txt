@@ -1,22 +1,55 @@
-openai
-langchain
-langchain-openai
-langchain-anthropic
-langchain-google-genai
-langchain-community
-pypdf
-python-docx
-pydantic
-python-dotenv
-pdf2image
-pytesseract
-opencv-python
-Pillow
-numpy
-streamlit
-fastapi
-uvicorn
-python-multipart
-openpyxl
-langchain-anthropic
-langchain-google-genai
+# ─────────────────────────────────────────────────────────────────
+# DocAgent — requirements.txt
+# Python 3.10+
+#
+# Install all dependencies:
+#   pip install -r requirements.txt
+#
+# For OCR support (Windows):
+#   1. Tesseract: https://github.com/UB-Mannheim/tesseract/wiki
+#      Add install dir to PATH, e.g. C:\Program Files\Tesseract-OCR
+#      For Chinese: download chi_sim.traineddata + eng.traineddata
+#        into Tesseract's tessdata/ folder
+#   2. Poppler (for pdf2image): https://github.com/oschwartz10612/poppler-windows
+#      Add poppler/Library/bin to PATH
+# ─────────────────────────────────────────────────────────────────
+
+# ── Web framework ─────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9          # FastAPI file uploads
+
+# ── Streamlit UI ──────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── LangChain + LLM providers ────────────────────────────────────
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-openai>=0.1.8          # GPT-4o, GPT-4o-mini, o1, o3
+langchain-anthropic>=0.1.15      # Claude 3.5 Sonnet, Claude 3 Opus
+
+# ── PDF extraction ────────────────────────────────────────────────
+pdfplumber>=0.11.0               # Native text layer extraction
+pdf2image>=1.17.0                # PDF page → PIL image (requires Poppler)
+
+# ── DOCX extraction ───────────────────────────────────────────────
+python-docx>=1.1.2
+
+# ── OCR ───────────────────────────────────────────────────────────
+pytesseract>=0.3.13              # Python wrapper for Tesseract OCR
+
+# ── Image processing ──────────────────────────────────────────────
+Pillow>=10.3.0                   # Core image I/O and transforms
+opencv-python>=4.9.0.80          # Deskew, denoise, binarise (strongly recommended)
+numpy>=1.26.0                    # Array ops used by OpenCV and image pipeline
+
+# ── Excel export / template parsing ──────────────────────────────
+openpyxl>=3.1.3                  # Read Excel templates + write result workbooks
+
+# ── Date parsing fallback ─────────────────────────────────────────
+python-dateutil>=2.9.0           # Handles edge-case date formats in agent.py
+
+# ── Standard library backfills (Python < 3.11) ───────────────────
+# tomllib is built-in from 3.11; no extra install needed
+# typing_extensions only needed if using 3.9
+# typing_extensions>=4.11.0
