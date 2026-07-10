@@ -82,6 +82,7 @@ st.markdown("""
 [data-testid="stSidebar"] * {
     color: #F3F4F6 !important;
 }
+/* Style inputs inside sidebar to be dark-mode friendly */
 [data-testid="stSidebar"] .stSelectbox > div > div, 
 [data-testid="stSidebar"] .stTextInput > div > div > input {
     background: rgba(255,255,255,0.1) !important;
@@ -89,6 +90,53 @@ st.markdown("""
     border-radius: var(--radius-md) !important;
     color: #FFFFFF !important;
 }
+
+/* Sidebar nav buttons (Bulletproof for Streamlit Cloud Light Mode) */
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button[data-kind="secondary"] {
+    background: rgba(255, 255, 255, 0.08) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: rgba(233, 227, 247, 0.95) !important;
+    border-radius: var(--radius-md) !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    transition: var(--transition) !important;
+    letter-spacing: 0.01em;
+}
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span,
+[data-testid="stSidebar"] .stButton > button div {
+    color: rgba(233, 227, 247, 0.95) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
+[data-testid="stSidebar"] .stButton > button[data-kind="secondary"]:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover p,
+[data-testid="stSidebar"] .stButton > button:hover span {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-kind="primary"] {
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.05) 100%) !important;
+    background-color: transparent !important;
+    border: 1px solid rgba(255,255,255,0.4) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="primary"] p,
+[data-testid="stSidebar"] .stButton > button[data-kind="primary"] p,
+[data-testid="stSidebar"] .stButton > button[kind="primary"] span,
+[data-testid="stSidebar"] .stButton > button[data-kind="primary"] span {
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+}
+
+/* Beautiful Sidebar Progress Bar */
 .prog-bar-wrap {
     background: rgba(255,255,255,0.15);
     border-radius: 999px; height: 8px; overflow: hidden; margin: 10px 0;
@@ -238,10 +286,9 @@ def _init_state():
         "chat_doc_text":  "",
         "chat_doc_name":  "",
         "chat_template_text": "",
+        "chat_template_name": "",
         "console_raw":    None,
         "console_raw_name": "",
-        "console_file_list": [],
-        "console_tpl_list": [],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1050,7 +1097,7 @@ def _export_bar():
 
         from task_engine import get_task as _get_task
         from template_service import get_template
-        from export_service import build_excel, build_docx
+        from export_service import build_excel, build_docx, build_pptx
         from schema import ExportRequest
 
         task     = _get_task(st.session_state.task_id)
@@ -1094,7 +1141,7 @@ def _export_bar():
                 )
         
         with ec5:
-            st.caption("✨ 想生成定制化的汇总报告或精美 PPT？请前往『AI 控制台』进行多文件融合交互！")
+            st.caption("✨ 想将摘要制作为精美 PPT？请前往『AI 控制台』进行单文件深度交互式提取！")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1195,7 +1242,7 @@ def page_console():
                         
                         # 2. 解析目标文件
                         all_texts = []
-                        sep = "\n\n"
+                        sep = "\\n\\n"
                         for fi, fitem in enumerate(file_list):
                             pct = 30 + int(60 * fi / max(len(file_list), 1))
                             prog.progress(pct, text=f"🔍 深度萃取目标文件 {fi + 1}/{len(file_list)}…")
@@ -1208,7 +1255,7 @@ def page_console():
                                         txt = txt.full_text
                                 except concurrent.futures.TimeoutError:
                                     txt = f"[{fitem['name']} 解析超时]"
-                            all_texts.append(f"【目标文档源: {fitem['name']}】\n{txt}")
+                            all_texts.append(f"【目标文档源: {fitem['name']}】\\n{txt}")
 
                         full_text = sep.join(all_texts)
                         doc_names = " + ".join(f["name"] for f in file_list)
@@ -1240,7 +1287,7 @@ def page_console():
                 st.markdown(f"<div style='font-size:0.85rem; font-weight:600;'>📂 目标文档: {st.session_state['chat_doc_name']}</div>", unsafe_allow_html=True)
                 st.caption(f"驱动引擎: `{model}`")
 
-                if st.button("🔌 熔断并清理记忆区", use_container_width=True, key="clear_extracted_context"):
+                if st.button("🔌 熔断并清理记忆区", use_container_width=True, key="clear_extracted_context_btn"):
                     st.session_state["chat_template_text"] = ""
                     st.session_state["chat_template_name"] = ""
                     st.session_state["chat_doc_text"] = ""
@@ -1283,19 +1330,19 @@ def page_console():
 
             if user_input:
                 # ── 核心逻辑：组装双轨 Prompt，执行样板级联克隆 ──
-                sys_prompt = "你是极其严谨的商业文档分析顾问与公文写作专家。\n"
+                sys_prompt = "你是极其严谨的商业文档分析顾问与公文写作专家。\\n"
                 if tpl_text:
-                    sys_prompt += f"\n【参考排版样板】\n请严格剖析并完全克隆以下样板文本的大纲层级、行文格式与汇报语气：\n---\n{tpl_text[:6000]}\n---\n\n"
+                    sys_prompt += f"\\n【参考排版样板】\\n请严格剖析并完全克隆以下样板文本的大纲层级、行文格式与汇报语气：\\n---\\n{tpl_text[:6000]}\\n---\\n\\n"
                 
-                sys_prompt += f"【待处理目标文档】\n请根据以下目标文档的内容进行分析或重组作答：\n---\n{doc_text[:16000]}\n---\n\n"
+                sys_prompt += f"【待处理目标文档】\\n请根据以下目标文档的内容进行分析或重组作答：\\n---\\n{doc_text[:16000]}\\n---\\n\\n"
                 
                 sys_prompt += (
-                    "【严格执行原则】\n"
-                    "1. 绝不允许编造或幻觉出文档中不存在的数据和议案。\n"
-                    "2. 最终输出请使用清晰的 Markdown 排版。\n"
+                    "【严格执行原则】\\n"
+                    "1. 绝不允许编造或幻觉出文档中不存在的数据和议案。\\n"
+                    "2. 最终输出请使用清晰的 Markdown 排版。\\n"
                 )
                 if tpl_text:
-                    sys_prompt += "3. 用户要求格式化输出或汇总时，必须像模版一样组织你的标题和要点结构。\n"
+                    sys_prompt += "3. 用户要求格式化输出或汇总时，必须像模版一样组织你的标题和要点结构。\\n"
 
                 last_msgs = st.session_state["chat_history"]
                 last_user = next((m for m in reversed(last_msgs) if m["role"] == "user"), None)
@@ -1318,10 +1365,10 @@ def page_console():
                         if col.button(label, use_container_width=True, key=f"q_{label}"):
                             st.session_state["chat_history"].append({"role": "user", "content": prompt})
                             with st.spinner(f"正在全速执行: {label}…"):
-                                sys_p = "你是专业公文写作专家。\n"
+                                sys_p = "你是专业公文写作专家。\\n"
                                 if tpl_text:
-                                    sys_p += f"\n【参考排版样板】\n请严格克隆以下结构和语气：\n---\n{tpl_text[:6000]}\n---\n"
-                                sys_p += f"\n【待处理目标文档】\n---\n{doc_text[:16000]}\n---\n"
+                                    sys_p += f"\\n【参考排版样板】\\n请严格克隆以下结构和语气：\\n---\\n{tpl_text[:6000]}\\n---\\n"
+                                sys_p += f"\\n【待处理目标文档】\\n---\\n{doc_text[:16000]}\\n---\\n"
                                 answer = _call_chat_llm(sys_p, prompt, model)
                             st.session_state["chat_history"].append({"role": "assistant", "content": answer})
                             st.rerun()
@@ -1451,30 +1498,26 @@ def _ai_response_to_docx_local(ai_text: str, doc_name: str) -> bytes:
 
     doc = Document()
     
-    # Apply global styles
     style = doc.styles['Normal']
     font = style.font
     font.name = 'Microsoft YaHei'
     font.size = Pt(11)
 
-    # Main Title
     title = doc.add_heading('智能文档审阅与汇总分析报告', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_font = title.runs[0].font
     title_font.name = 'Microsoft YaHei'
     title_font.color.rgb = RGBColor(0x2D, 0x1B, 0x69)
 
-    # Metadata
     p_meta = doc.add_paragraph()
     p_meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_meta = p_meta.add_run(f"来源数据列阵: {doc_name}\n编译生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    run_meta = p_meta.add_run(f"来源数据列阵: {doc_name}\\n编译生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     run_meta.font.size = Pt(9)
     run_meta.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
 
     doc.add_page_break()
 
-    # Iterative basic markdown parsing
-    for line in ai_text.split('\n'):
+    for line in ai_text.split('\\n'):
         line = line.strip()
         if not line:
             continue
@@ -1491,15 +1534,14 @@ def _ai_response_to_docx_local(ai_text: str, doc_name: str) -> bytes:
             h.runs[0].font.name = 'Microsoft YaHei'
             h.runs[0].font.color.rgb = RGBColor(0x2D, 0x1B, 0x69)
         elif line.startswith('- ') or line.startswith('* '):
-            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', line[2:])
+            clean_text = re.sub(r'\\*\\*(.*?)\\*\\*', r'\\1', line[2:])
             p = doc.add_paragraph(clean_text, style='List Bullet')
-        elif re.match(r'^\d+\.\s', line):
-            clean_text = re.sub(r'^\d+\.\s', '', line)
-            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)
+        elif re.match(r'^\\d+\\.\\s', line):
+            clean_text = re.sub(r'^\\d+\\.\\s', '', line)
+            clean_text = re.sub(r'\\*\\*(.*?)\\*\\*', r'\\1', clean_text)
             p = doc.add_paragraph(clean_text, style='List Number')
         else:
-            # Handle inline bolding basic regex mapping
-            clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
+            clean_line = re.sub(r'\\*\\*(.*?)\\*\\*', r'\\1', line)
             doc.add_paragraph(clean_line)
 
     buf = io.BytesIO()
@@ -1584,20 +1626,42 @@ def _ai_response_to_pptx(ai_text: str, doc_text: str, doc_name: str, model: str)
     import json
     import re
     
-    system_prompt = """你是一个高级 PPT 数据构造引擎。提取文档内容，输出符合以下 JSON Schema 的纯净 JSON 字符串，不要带 markdown 代码块。
+    system_prompt = """你是一个高级 PPT 报告编排 Agent。你的任务是根据提供的【文档原始文本】和刚才的【AI 分析主干】，拆解并重组信息，输出符合以下 JSON Schema 的严格数据结构以供 PPT 渲染引擎调用。
+【指令红线】
+1. 数据极度保真：所有数字、项目、公司名必须源自原文提取，严禁臆造或使用 [占位符]。
+2. 输出必须是一个纯净合法的 JSON 字符串，不能包裹任何 markdown 格式（如禁止包含 ```json 标签）。
+
+【标准 JSON 框架】
 {
-    "summary": "核心执行摘要", "topics": ["主题1"], "entities": ["实体1"], "dates": ["日期"], "actions": ["行动"],
-    "page_count": 1, "char_count": 2000,
+    "summary": "一段约200字的报告高管摘要",
+    "topics": ["最多提取6个关键词块"],
+    "entities": ["关键团队/项目/合作方 1", "实体2"],
+    "dates": ["核心日期/节点 1"],
+    "actions": ["分配到的动作/KPI 1", "动作2"],
+    "sentiment": "positive",
+    "page_count": 1,
+    "char_count": 2000,
     "sections": [
-        {"title": "财务目标", "content": [["指标", "数值"], ["净利润", "100万"]], "type": "table"}
+        {
+            "title": "战略目标拆解",
+            "content": ["第一点战略支撑", "第二点战略支撑"],
+            "type": "bullets"
+        },
+        {
+            "title": "财务目标 / 预算卡片",
+            "content": [
+                ["KPI 指标", "目标额度"],
+                ["营业总收入", "2,470万元"]
+            ],
+            "type": "table"
+        }
     ]
 }"""
-    raw_response = _call_chat_llm(system_prompt, f"AI思考:{ai_text}\n原文:{doc_text[:10000]}", model)
+    raw_response = _call_chat_llm(system_prompt, f"AI思考:{ai_text}\\n原文:{doc_text[:10000]}", model)
     try:
-        # 完全规避由于硬编码三个反引号导致的任何 Markdown 解析器截断或崩溃 Bug
         MD_TICK = chr(96) * 3
-        cleaned = re.sub(r"^" + MD_TICK + r"(?:json)?\s*", "", raw_response.strip())
-        cleaned = re.sub(r"\s*" + MD_TICK + r"$", "", cleaned).strip()
+        cleaned = re.sub(r"^" + MD_TICK + r"(?:json)?\\s*", "", raw_response.strip())
+        cleaned = re.sub(r"\\s*" + MD_TICK + r"$", "", cleaned).strip()
         info = json.loads(cleaned)
     except Exception as e:
         info = {

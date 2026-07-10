@@ -45,6 +45,10 @@ numpy>=1.26.0                    # Array ops used by OpenCV and image pipeline
 
 # ── Excel export / template parsing ──────────────────────────────
 openpyxl>=3.1.3                  # Read Excel templates + write result workbooks
+pandas>=2.0.0                    # Write Excel dataframes in export_service
+
+# ── PPTX export ───────────────────────────────────────────────────
+python-pptx>=0.6.23              # Generate PowerPoint slides in export_service
 
 # ── Date parsing fallback ─────────────────────────────────────────
 python-dateutil>=2.9.0           # Handles edge-case date formats in agent.py
