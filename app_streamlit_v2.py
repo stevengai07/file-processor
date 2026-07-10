@@ -82,7 +82,6 @@ st.markdown("""
 [data-testid="stSidebar"] * {
     color: #F3F4F6 !important;
 }
-/* Style inputs inside sidebar to be dark-mode friendly */
 [data-testid="stSidebar"] .stSelectbox > div > div, 
 [data-testid="stSidebar"] .stTextInput > div > div > input {
     background: rgba(255,255,255,0.1) !important;
@@ -90,7 +89,6 @@ st.markdown("""
     border-radius: var(--radius-md) !important;
     color: #FFFFFF !important;
 }
-/* Beautiful Sidebar Progress Bar */
 .prog-bar-wrap {
     background: rgba(255,255,255,0.15);
     border-radius: 999px; height: 8px; overflow: hidden; margin: 10px 0;
@@ -239,9 +237,11 @@ def _init_state():
         "chat_history":   [],
         "chat_doc_text":  "",
         "chat_doc_name":  "",
+        "chat_template_text": "",
         "console_raw":    None,
         "console_raw_name": "",
         "console_file_list": [],
+        "console_tpl_list": [],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -269,7 +269,6 @@ def _sidebar():
 """, unsafe_allow_html=True)
         st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.1);margin:0 0 16px;'>", unsafe_allow_html=True)
 
-        # ── Page navigation ───────────────────────────────────────────────
         pages = {
             "1_template": "① 模板配置",
             "2_extract":  "② 批量提取",
@@ -289,7 +288,6 @@ def _sidebar():
 
         st.markdown("---")
 
-        # ── Feature help cards under nav ──────────────────────────────────
         page_help = {
             "1_template": {
                 "icon": "📋", "title": "① 模板配置",
@@ -303,8 +301,13 @@ def _sidebar():
             },
             "3_review": {
                 "icon": "✅", "title": "③ 结果审核",
-                "用途": "在线人工复核与修改，一键导出 Excel / PPT。",
+                "用途": "在线人工复核与修改，一键导出 Excel / Word。",
                 "格式要求": "数据承接自上一步，无需重新上传。",
+            },
+            "4_console": {
+                "icon": "🧠", "title": "④ AI 控制台",
+                "用途": "多文档跨篇章追问，基于样板仿写汇总与公文生成。",
+                "格式要求": "支持上传【样板】及【多份目标文件】。",
             },
         }
         current_page = st.session_state.get("page", "1_template")
@@ -331,7 +334,6 @@ def _sidebar():
 
         st.markdown("---")
 
-        # ── Current status indicators ─────────────────────────────────────
         tmpl_ok = st.session_state.template_id is not None
         task_ok = st.session_state.task_id is not None
         tmpl_color = "#34D399" if tmpl_ok else "rgba(255,255,255,0.2)"
@@ -373,7 +375,6 @@ def _sidebar():
 
         st.markdown("---")
 
-        # ── Language ──────────────────────────────────────────────────────
         st.markdown("#### 🌐 语言")
         lang_options = {
             "中文 (Chinese)":  "chi_sim+eng",
@@ -393,9 +394,7 @@ def _sidebar():
 
         st.markdown("---")
 
-        # ── Model selection ───────────────────────────────────────────────
         st.markdown("#### ⊕ 模型")
-
         provider_map = {
             "OpenAI":    ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "o1-mini", "o3-mini"],
             "Anthropic": ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
@@ -403,81 +402,20 @@ def _sidebar():
             "DeepSeek":  ["deepseek-chat", "deepseek-coder"],
             "Gemini":    ["gemini-1.5-flash", "gemini-1.5-pro"],
         }
-
-        st.markdown("服务商")
-        selected_provider = st.selectbox(
-            "",
-            list(provider_map.keys()),
-            index=0,
-            key="sidebar_provider",
-            label_visibility="collapsed",
-        )
-
-        st.markdown("模型")
+        selected_provider = st.selectbox("", list(provider_map.keys()), index=0, key="sidebar_provider", label_visibility="collapsed")
         model_list = provider_map[selected_provider]
-        selected_model = st.selectbox(
-            "",
-            model_list,
-            index=0,
-            key="sidebar_model",
-            label_visibility="collapsed",
-        )
+        selected_model = st.selectbox("", model_list, index=0, key="sidebar_model", label_visibility="collapsed")
         st.session_state["selected_model"] = selected_model
-
-        # Cost hint
-        cost_hints = {
-            "gpt-4o-mini":              "~$0.00015/doc • Fast & cheap",
-            "gpt-4o":                   "~$0.005/doc • Most capable",
-            "gpt-4-turbo":              "~$0.01/doc • High quality",
-            "o1-mini":                  "~$0.003/doc • Reasoning",
-            "o3-mini":                  "~$0.001/doc • Reasoning lite",
-            "claude-3-5-haiku-20241022":"~$0.00025/doc • Fast Anthropic",
-            "claude-3-5-sonnet-20241022":"~$0.003/doc • Best Anthropic",
-            "claude-3-opus-20240229":   "~$0.015/doc • Powerful",
-            "qwen-turbo":               "~$0.00003/doc • Ultra cheap Qwen model",
-            "qwen-plus":                "~$0.0002/doc • Balanced Qwen",
-            "qwen-max":                 "~$0.002/doc • Best Qwen",
-            "deepseek-chat":            "~$0.00014/doc • Ultra cheap",
-            "deepseek-coder":           "~$0.00014/doc • Code optimised",
-            "gemini-1.5-flash":         "~$0.000075/doc • Very fast",
-            "gemini-1.5-pro":           "~$0.00125/doc • Multimodal",
-        }
-        hint = cost_hints.get(selected_model, "")
-        if hint:
-            st.markdown(
-                f"<div style='font-size:0.75rem;color:#B8A9D9;margin-top:6px;background:rgba(0,0,0,0.2);padding:6px 10px;border-radius:6px;'>💰 {hint}</div>",
-                unsafe_allow_html=True,
-            )
 
         st.markdown("---")
 
-        # ── Scan / OCR settings ───────────────────────────────────────────
         st.markdown("#### 🖼️ 扫描文件")
-
-        st.markdown("图像增强预设")
-        ocr_preset = st.selectbox(
-            "",
-            ["扫描仪", "照片", "混合", "关闭"],
-            index=0,
-            key="sidebar_ocr_preset",
-            label_visibility="collapsed",
-        )
+        ocr_preset = st.selectbox("", ["扫描仪", "照片", "混合", "关闭"], index=0, key="sidebar_ocr_preset", label_visibility="collapsed")
         preset_map = {"扫描仪": "scanner", "照片": "photo", "混合": "mixed", "关闭": "off"}
         st.session_state["ocr_preset_resolved"] = preset_map[ocr_preset]
 
-        st.markdown("OCR 语言")
-        ocr_lang_display = st.text_input(
-            "",
-            value=st.session_state.get("ocr_lang_resolved", "chi_sim+eng"),
-            key="sidebar_ocr_lang",
-            label_visibility="collapsed",
-            help="Tesseract 语言代码，例如 chi_sim+eng，多语言用 + 分隔",
-        )
-        st.session_state["ocr_lang_resolved"] = ocr_lang_display
-
         st.markdown("---")
 
-        # ── API Key override ──────────────────────────────────────────────
         provider_key_labels = {
             "OpenAI":    ("OPENAI_API_KEY",    "sk-..."),
             "Anthropic": ("ANTHROPIC_API_KEY", "sk-ant-..."),
@@ -487,40 +425,18 @@ def _sidebar():
         }
         env_var, placeholder = provider_key_labels.get(selected_provider, ("API_KEY", "sk-..."))
         key_already_set = bool(os.environ.get(env_var, ""))
-        expander_label = f"🔑 API 密钥{'  ✅' if key_already_set else '  ⚠️'} ({env_var})"
+        expander_label = f"🔑 API 密钥{'  ✅' if key_already_set else '  ⚠️'}"
         
         with st.expander(expander_label):
-            if key_already_set:
-                st.markdown(
-                    f"<div style='font-size:0.8rem;color:#34D399;margin-bottom:8px;'>✅ {env_var} 已通过环境变量设置</div>",
-                    unsafe_allow_html=True,
-                )
             api_key_input = st.text_input(
-                f"{selected_provider} API Key",
+                f"{env_var}",
                 type="password",
-                key=f"sidebar_api_key_{selected_provider}",
                 placeholder=placeholder,
-                help=f"设置后将覆盖环境变量 {env_var}",
             )
             if api_key_input:
                 os.environ[env_var] = api_key_input
                 st.toast(f"✅ {env_var} 设置成功！", icon="🔑")
                 st.rerun()
-            
-            help_links = {
-                "OpenAI":    ("获取 OpenAI Key", "https://platform.openai.com/api-keys"),
-                "Anthropic": ("获取 Anthropic Key", "https://console.anthropic.com/settings/keys"),
-                "Alibaba":   ("获取 Dashscope Key", "https://dashscope.console.aliyun.com"),
-                "DeepSeek":  ("获取 DeepSeek Key", "https://platform.deepseek.com/api_keys"),
-                "Gemini":    ("获取 Google AI Key", "https://aistudio.google.com/app/apikey"),
-            }
-            if selected_provider in help_links:
-                lbl, url = help_links[selected_provider]
-                st.markdown(
-                    f"<div style='font-size:0.75rem;margin-top:8px;'>"
-                    f"<a href='{url}' target='_blank' style='color:#A78BFA;text-decoration:none;font-weight:600;'>🔗 {lbl}</a></div>",
-                    unsafe_allow_html=True,
-                )
 
         st.markdown("---")
         st.caption("Powered by LangChain + OpenAI / Anthropic")
@@ -573,7 +489,6 @@ def page_template():
                 st.session_state.parse_resp = resp
                 st.rerun()
 
-    # ── BIG UX IMPROVEMENT: Native Data Editor for Fields ──
     with st.container(border=True):
         st.markdown("<div class='card-title'>🔍 字段预览与快捷编辑</div>", unsafe_allow_html=True)
         
@@ -587,7 +502,6 @@ def page_template():
 
         st.caption("您可以直接在下方表格中双击单元格修改字段名称、类型、必填项和提示词。支持增加或删除行。")
 
-        # Convert to pandas DataFrame for easy editing
         type_opts = ["text", "long_text", "integer", "decimal", "date", "boolean", "list"]
         
         df_data = []
@@ -617,7 +531,6 @@ def page_template():
             key="template_data_editor"
         )
 
-    # ── Confirm / save ──
     with st.container(border=True):
         st.markdown("<div class='card-title'>💾 确认并保存模板</div>", unsafe_allow_html=True)
         tmpl_name = st.text_input("命名此模板配置", value=st.session_state.template_name or uploaded.name.replace(".xlsx", ""))
@@ -684,8 +597,6 @@ def _make_sample_xlsx() -> bytes:
             ["乙方名称",   "text",    "是", "某某服务有限公司",   "合同乙方全称"],
             ["合同金额",   "number",  "否", "100000",           "单位：人民币元"],
             ["合同期限",   "text",    "否", "12个月",           "起止日期或期限描述"],
-            ["联系人",    "text",    "否", "张三",             "签署方联系人姓名"],
-            ["联系电话",   "text",    "否", "13812345678",      "11位手机号或座机"],
         ]
         for row_data in sample_rows:
             ws.append(row_data)
@@ -823,10 +734,10 @@ def page_extract():
                 st.session_state.task_id = task.task_id
                 st.session_state.task    = task
 
-            file_tuples = []
-            for uf in uploaded_docs:
-                uf.seek(0)
-                file_tuples.append((uf.name, uf.read()))
+                file_tuples = []
+                for uf in uploaded_docs:
+                    uf.seek(0)
+                    file_tuples.append((uf.name, uf.read()))
 
             with st.spinner("文件上云中…"):
                 upload_result = add_files(task.task_id, file_tuples)
@@ -1139,7 +1050,7 @@ def _export_bar():
 
         from task_engine import get_task as _get_task
         from template_service import get_template
-        from export_service import build_excel, build_docx, build_pptx
+        from export_service import build_excel, build_docx
         from schema import ExportRequest
 
         task     = _get_task(st.session_state.task_id)
@@ -1183,26 +1094,22 @@ def _export_bar():
                 )
         
         with ec5:
-            st.caption("✨ 想将摘要制作为精美 PPT？请前往『AI 控制台』进行单文件深度交互式提取！")
+            st.caption("✨ 想生成定制化的汇总报告或精美 PPT？请前往『AI 控制台』进行多文件融合交互！")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 4 — AI CONSOLE
+# PAGE 4 — AI CONSOLE (Upgraded with Template Mimicking & Native DOCX)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _QUICK_COMMANDS = [
-    ("📄 智能摘要",     "请对这份文档进行简洁且结构化的摘要，突出核心数据和关键要点。"),
-    ("🌐 跨语言翻译",   "请将这份文档的核心结论翻译为英文，并保持专业商务口吻。"),
-    ("🔑 提炼关键事实", "请扫描全篇，列出文档中最核心的金额、指标和事实依据。"),
-    ("✅ 识别行动项",   "请梳理文档中分配给不同团队的所有行动项(To-Do)和建议。"),
-    ("❓ 自动生成Q&A",  "请扮演提问者，根据文档内容生成 5 个潜在刁钻问题并作答。"),
-    ("⚖️ 优势与劣势",   "请客观分析文档中计划或策略的优缺点与潜在风险。"),
-    ("📧 起草高管邮件", "请帮我起草一封简短有力的汇报邮件，向高层传递该文档主旨。"),
-    ("🔒 审查敏感信息", "请扫描是否存在手机号、身份证、极密财务等高敏信息并列出类型。"),
+    ("📝 仿写汇总报告",  "请严格参考【参考排版样板】的格式、标题层级与公文语气，将【待处理目标文档】中的议案进行整理汇总。并在末尾补充分析目标文档中缺失的关键要素（如：关联交易缺少公允性描述、缺少资金监管说明等）。"),
+    ("📄 智能深度摘要",  "请忽略样板格式，直接对目标文档进行结构化的深度摘要，分为背景、核心发现、和结论。"),
+    ("📊 数据指标提取",  "请将目标文档中所有财务数据或数字指标整理为 Markdown 表格格式。"),
+    ("✅ 识别执行清单",  "请梳理目标文档中分配给不同团队的所有行动项(To-Do)和建议，并分配优先级。"),
 ]
 
 def page_console():
-    st.markdown("<div class='sec-hdr'>💬 AI 深度分析控制台 <span style='font-size:0.8rem;font-weight:600;color:#9CA3AF;margin-left:auto;background:#F3F4F6;padding:4px 10px;border-radius:20px;'>Step 4 of 4</span></div>", unsafe_allow_html=True)
+    st.markdown("<div class='sec-hdr'>💬 AI 深度分析与仿写控制台 <span style='font-size:0.8rem;font-weight:600;color:#9CA3AF;margin-left:auto;background:#F3F4F6;padding:4px 10px;border-radius:20px;'>Step 4 of 4</span></div>", unsafe_allow_html=True)
 
     model = st.session_state.get("selected_model", "gpt-4o-mini")
 
@@ -1210,27 +1117,45 @@ def page_console():
 
     with col_left:
         with st.container(border=True):
-            st.markdown("<div class='card-title'>📂 文档空间</div>", unsafe_allow_html=True)
-            st.markdown("<p style='font-size:0.85rem;color:#6B7280;margin-bottom:12px;'>将单份或多份长文本资料拖入下方。解析完成后，AI 将拥有全部上下文记忆，支持多轮追问。</p>", unsafe_allow_html=True)
+            st.markdown("<div class='card-title'>📂 语料装载枢纽</div>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:0.85rem;color:#6B7280;margin-bottom:16px;'>在此构建您的工作上下文。您可以提供一份标准样板让 AI 学习其公文排版风格，再批量投喂目标源文件进行汇总或审查。</p>", unsafe_allow_html=True)
 
-            def sync_uploaded_files_callback():
-                raw_uploaded = st.session_state.get("console_file_uploader_widget")
+            # --- Uploader 1: Template Document ---
+            def sync_tpl_callback():
+                f = st.session_state.get("console_tpl_uploader")
+                if f:
+                    st.session_state["console_tpl_list"] = [{"name": f.name, "raw": f.getvalue(), "size": f.size}]
+                else:
+                    st.session_state["console_tpl_list"] = []
+
+            st.markdown("<div style='font-weight:600; color:#4B2E83; margin-bottom:8px;'>🎯 第一步：装载参考样板 (可选)</div>", unsafe_allow_html=True)
+            st.file_uploader(
+                "上传1份模板文档，AI将克隆其行文风格与大纲排版",
+                type=["pdf", "docx", "txt"],
+                key="console_tpl_uploader",
+                on_change=sync_tpl_callback,
+            )
+            if st.session_state.get("console_tpl_list"):
+                st.caption(f"✅ 已锁定样板文件：{st.session_state['console_tpl_list'][0]['name']}")
+
+            st.markdown("<hr style='margin:16px 0; border:none; border-top:1px dashed #E5E7EB;'>", unsafe_allow_html=True)
+
+            # --- Uploader 2: Target Documents ---
+            def sync_tgt_callback():
+                raw_uploaded = st.session_state.get("console_tgt_uploader")
                 if raw_uploaded:
-                    cached = []
-                    for f in raw_uploaded:
-                        f.seek(0)
-                        cached.append({"name": f.name, "raw": f.read(), "size": f.size})
+                    cached = [{"name": f.name, "raw": f.getvalue(), "size": f.size} for f in raw_uploaded]
                     st.session_state["console_file_list"] = cached
                 else:
                     st.session_state["console_file_list"] = []
 
-            uploaded_list = st.file_uploader(
-                "在此上传 PDF / DOCX",
+            st.markdown("<div style='font-weight:600; color:#4B2E83; margin-bottom:8px;'>📂 第二步：装载待处理目标文档</div>", unsafe_allow_html=True)
+            st.file_uploader(
+                "上传需要被汇总或审查的实体文档 (支持多选)",
                 type=["pdf", "docx"],
-                key="console_file_uploader_widget",
-                label_visibility="collapsed",
+                key="console_tgt_uploader",
                 accept_multiple_files=True,
-                on_change=sync_uploaded_files_callback,
+                on_change=sync_tgt_callback,
             )
 
             file_list = st.session_state.get("console_file_list", [])
@@ -1239,26 +1164,41 @@ def page_console():
                 n = len(file_list)
                 total_kb = sum(f["size"] for f in file_list) // 1024
                 st.markdown(f"""
-                <div style='background:#F0FDF4; border:1px solid #A7F3D0; border-radius:8px; padding:12px; margin-bottom:16px;'>
-                    <div style='color:#065F46; font-weight:700; font-size:0.9rem;'>已锁入 {n} 份底层文件 (共 {total_kb} KB)</div>
+                <div style='background:#F0FDF4; border:1px solid #A7F3D0; border-radius:8px; padding:12px; margin:12px 0;'>
+                    <div style='color:#065F46; font-weight:700; font-size:0.85rem;'>待处理池已就绪：{n} 份文件 (共 {total_kb} KB)</div>
                 </div>
                 """, unsafe_allow_html=True)
 
                 col_e, col_c = st.columns([2, 1])
-                extract_clicked = col_e.button("⚡ 解析并挂载至 AI", use_container_width=True, type="primary")
-                col_c.button("🗑️ 清空重载", use_container_width=True, on_click=lambda: st.session_state.pop("console_file_list", None))
+                extract_clicked = col_e.button("⚡ 解析并注入大模型", use_container_width=True, type="primary")
+                col_c.button("🗑️ 清空重载", use_container_width=True, on_click=lambda: st.session_state.update({"console_file_list": [], "console_tpl_list": []}))
 
                 if extract_clicked:
-                    prog = st.progress(0, text="⏳ OCR / 文本解析中…")
+                    prog = st.progress(0, text="⏳ 引擎预热中…")
                     try:
-                        import io, concurrent.futures
+                        import concurrent.futures
                         from extractor import extract
-
+                        
+                        # 1. 解析样板文件 (如果存在)
+                        tpl_text = ""
+                        tpl_list = st.session_state.get("console_tpl_list", [])
+                        if tpl_list:
+                            prog.progress(10, text="🔍 正在拆解并学习参考样板排版…")
+                            fitem = tpl_list[0]
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                                fut = pool.submit(extract, fitem["name"], fitem["raw"])
+                                try:
+                                    res = fut.result(timeout=45)
+                                    tpl_text = res.full_text if not isinstance(res, str) else res
+                                except Exception:
+                                    tpl_text = ""
+                        
+                        # 2. 解析目标文件
                         all_texts = []
                         sep = "\n\n"
                         for fi, fitem in enumerate(file_list):
-                            pct = 20 + int(60 * fi / max(len(file_list), 1))
-                            prog.progress(pct, text=f"🔍 拆解文件 {fi + 1}/{len(file_list)}…")
+                            pct = 30 + int(60 * fi / max(len(file_list), 1))
+                            prog.progress(pct, text=f"🔍 深度萃取目标文件 {fi + 1}/{len(file_list)}…")
                             
                             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                                 fut = pool.submit(extract, fitem["name"], fitem["raw"])
@@ -1268,20 +1208,23 @@ def page_console():
                                         txt = txt.full_text
                                 except concurrent.futures.TimeoutError:
                                     txt = f"[{fitem['name']} 解析超时]"
-                            all_texts.append(f"【源文件: {fitem['name']}】\n{txt}")
+                            all_texts.append(f"【目标文档源: {fitem['name']}】\n{txt}")
 
                         full_text = sep.join(all_texts)
-                        char_count = len(full_text.strip())
                         doc_names = " + ".join(f["name"] for f in file_list)
 
+                        st.session_state["chat_template_text"] = tpl_text
+                        st.session_state["chat_template_name"] = tpl_list[0]["name"] if tpl_list else ""
                         st.session_state["chat_doc_text"] = full_text
                         st.session_state["chat_doc_name"] = doc_names
-                        st.session_state["chat_history"].append({
-                            "role": "system_info",
-                            "content": f"🔗 底层语料链已建立。注入 {len(file_list)} 份文件，提纯 {char_count:,} 字符。"
-                        })
+                        
+                        msg = f"🔗 底层语料链已建立。注入 {len(file_list)} 份目标文件。"
+                        if tpl_text:
+                            msg += f" 并已成功克隆 1 份格式样板引擎库。"
+                            
+                        st.session_state["chat_history"].append({"role": "system_info", "content": msg})
                         prog.progress(100, text=f"🎉 上下文装载完毕！")
-                        st.toast("语料库挂载成功，您可以开始对话了！", icon="✨")
+                        st.toast("语料库挂载成功，您可以开始仿写或对话了！", icon="✨")
                         time.sleep(0.5)
                         st.rerun()
 
@@ -1292,10 +1235,14 @@ def page_console():
         if st.session_state.get("chat_doc_name"):
             with st.container(border=True):
                 st.markdown("<div class='card-title' style='color:#059669;'>🧠 活跃记忆上下文</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size:0.85rem; font-weight:600;'>{st.session_state['chat_doc_name']}</div>", unsafe_allow_html=True)
+                if st.session_state.get("chat_template_name"):
+                    st.markdown(f"<div style='font-size:0.85rem; font-weight:600; color:#D97706; margin-bottom:4px;'>🎯 样板锁定: {st.session_state['chat_template_name']}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:0.85rem; font-weight:600;'>📂 目标文档: {st.session_state['chat_doc_name']}</div>", unsafe_allow_html=True)
                 st.caption(f"驱动引擎: `{model}`")
 
-                if st.button("🔌 熔断并卸载记忆", use_container_width=True, key="clear_extracted_context"):
+                if st.button("🔌 熔断并清理记忆区", use_container_width=True, key="clear_extracted_context"):
+                    st.session_state["chat_template_text"] = ""
+                    st.session_state["chat_template_name"] = ""
                     st.session_state["chat_doc_text"] = ""
                     st.session_state["chat_doc_name"] = ""
                     st.session_state["chat_history"] = []
@@ -1303,6 +1250,7 @@ def page_console():
 
     with col_right:
         doc_text = st.session_state.get("chat_doc_text", "")
+        tpl_text = st.session_state.get("chat_template_text", "")
 
         if not doc_text:
             st.markdown("""
@@ -1310,16 +1258,16 @@ def page_console():
               <div style="font-size:3.5rem;margin-bottom:16px;opacity:0.8;">💬</div>
               <div style="font-weight:700;color:#374151;font-size:1.15rem;margin-bottom:8px;">AI 推理大脑正休眠</div>
               <div style="color:#9CA3AF;font-size:0.9rem;line-height:1.6;max-width:380px;margin:0 auto;">
-                请在左侧区域上传您需要剖析的文档。我们将通过 LLM 为您提取不可见的深度关联逻辑并协助生成汇报物料。
+                请在左侧区域分别上传【样板文件】与【待分析文档】。我们将通过大模型进行像素级的公文排版克隆与内容汇总。
               </div>
             </div>
             """, unsafe_allow_html=True)
         else:
             with st.container(border=True):
-                chat_container = st.container(height=500)
+                chat_container = st.container(height=450)
                 with chat_container:
                     if not st.session_state["chat_history"]:
-                        st.markdown("<div style='text-align:center; color:#9CA3AF; font-size:0.9rem; padding: 20px;'>您可以从下方挑选快捷指令，或直接在输入框提问。</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='text-align:center; color:#9CA3AF; font-size:0.9rem; padding: 20px;'>您可以从下方挑选快捷指令（如：仿写汇总报告），或直接在输入框提问。</div>", unsafe_allow_html=True)
                     for msg in st.session_state["chat_history"]:
                         if msg["role"] == "user":
                             with st.chat_message("user", avatar="👤"):
@@ -1331,20 +1279,30 @@ def page_console():
                             st.info(msg["content"])
 
             # ── Free-form chat input ──────────────────────────────────────
-            user_input = st.chat_input("向 AI 询问文档细节或下达编写指令...")
+            user_input = st.chat_input("向 AI 下达审查编写指令或询问文档细节...")
 
             if user_input:
-                system_prompt = (
-                    "你是极其严谨的商业文档分析顾问。你需要根据下方【底层材料源】忠实回答用户的问题。\n"
-                    "原则：1. 数据必须精准引用。2. 排版用 Markdown 呈现。3. 若文档无此信息，请直接回答未找到，禁止自行编造捏造。\n\n"
-                    f"【底层材料源】\n{doc_text[:12000]}"
+                # ── 核心逻辑：组装双轨 Prompt，执行样板级联克隆 ──
+                sys_prompt = "你是极其严谨的商业文档分析顾问与公文写作专家。\n"
+                if tpl_text:
+                    sys_prompt += f"\n【参考排版样板】\n请严格剖析并完全克隆以下样板文本的大纲层级、行文格式与汇报语气：\n---\n{tpl_text[:6000]}\n---\n\n"
+                
+                sys_prompt += f"【待处理目标文档】\n请根据以下目标文档的内容进行分析或重组作答：\n---\n{doc_text[:16000]}\n---\n\n"
+                
+                sys_prompt += (
+                    "【严格执行原则】\n"
+                    "1. 绝不允许编造或幻觉出文档中不存在的数据和议案。\n"
+                    "2. 最终输出请使用清晰的 Markdown 排版。\n"
                 )
+                if tpl_text:
+                    sys_prompt += "3. 用户要求格式化输出或汇总时，必须像模版一样组织你的标题和要点结构。\n"
+
                 last_msgs = st.session_state["chat_history"]
                 last_user = next((m for m in reversed(last_msgs) if m["role"] == "user"), None)
                 if not last_user or last_user["content"] != user_input:
                     st.session_state["chat_history"].append({"role": "user", "content": user_input})
-                    with st.spinner("AI 深度推演中…"):
-                        answer = _call_chat_llm(system_prompt, user_input, model)
+                    with st.spinner("AI 深度仿写与推理中…"):
+                        answer = _call_chat_llm(sys_prompt, user_input, model)
                     st.session_state["chat_history"].append({"role": "assistant", "content": answer})
                 st.rerun()
 
@@ -1352,52 +1310,69 @@ def page_console():
             
             # ── 快捷指令 Pills ──
             with st.container(border=True):
-                st.markdown("<div class='card-title' style='margin-bottom:8px; border-bottom:none; padding-bottom:0;'>✨ 一键洞察指令</div>", unsafe_allow_html=True)
-                # 使用 Streamlit columns 模拟 pill 网格
+                st.markdown("<div class='card-title' style='margin-bottom:8px; border-bottom:none; padding-bottom:0;'>✨ 深度汇编指令库</div>", unsafe_allow_html=True)
                 rows = [_QUICK_COMMANDS[i:i+4] for i in range(0, len(_QUICK_COMMANDS), 4)]
                 for row in rows:
                     cols = st.columns(len(row))
                     for col, (label, prompt) in zip(cols, row):
                         if col.button(label, use_container_width=True, key=f"q_{label}"):
                             st.session_state["chat_history"].append({"role": "user", "content": prompt})
-                            with st.spinner(f"正在执行: {label}…"):
-                                sys_prompt = f"你是专业商业顾问。严格依据源文档作答：\n{doc_text[:12000]}"
-                                answer = _call_chat_llm(sys_prompt, prompt, model)
+                            with st.spinner(f"正在全速执行: {label}…"):
+                                sys_p = "你是专业公文写作专家。\n"
+                                if tpl_text:
+                                    sys_p += f"\n【参考排版样板】\n请严格克隆以下结构和语气：\n---\n{tpl_text[:6000]}\n---\n"
+                                sys_p += f"\n【待处理目标文档】\n---\n{doc_text[:16000]}\n---\n"
+                                answer = _call_chat_llm(sys_p, prompt, model)
                             st.session_state["chat_history"].append({"role": "assistant", "content": answer})
                             st.rerun()
 
-            # ── 成果物导出 ──
+            # ── 成果物导出 (新增 DOCX 引擎) ──
             last_ai_msg = next((m["content"] for m in reversed(st.session_state["chat_history"]) if m["role"] == "assistant"), None)
             if last_ai_msg:
-                with st.expander("📤 将最后一组 AI 结论封装导出为专业报告", expanded=False):
-                    st.markdown("<p style='font-size:0.85rem; color:#6B7280;'>系统将召唤专职编排 Agent，把 AI 输出的一维文本打散、重组、并套用企业级幻灯片结构生成可汇报演示文稿。</p>", unsafe_allow_html=True)
-                    ec1, ec2 = st.columns(2)
+                with st.expander("📤 将最新对话成果物封装打包", expanded=True):
+                    st.markdown("<p style='font-size:0.85rem; color:#6B7280;'>一键将大模型输出的汇总报告或表格导出为本地原生办公文档，直接投入工作流使用。</p>", unsafe_allow_html=True)
+                    ec1, ec2, ec3 = st.columns(3)
                     
                     with ec1:
-                        if st.button("📊 导出为结构化 Excel", use_container_width=True, type="secondary"):
-                            with st.spinner("正在提取数据为 Excel 矩阵…"):
-                                st.session_state["ai_excel_bytes"] = _ai_response_to_excel(last_ai_msg, st.session_state.get("chat_doc_name", "document"))
+                        if st.button("📝 编译生成 Word 文稿", use_container_width=True, type="secondary"):
+                            with st.spinner("正在将 Markdown 引擎接驳至 DOCX 原生排版器..."):
+                                st.session_state["ai_docx_gen_bytes"] = _ai_response_to_docx_local(last_ai_msg, st.session_state.get("chat_doc_name", "document"))
                         
-                        if "ai_excel_bytes" in st.session_state:
+                        if "ai_docx_gen_bytes" in st.session_state:
                             st.download_button(
-                                "⬇ 确认下载 Excel 文件",
-                                data=st.session_state["ai_excel_bytes"],
-                                file_name=f"AI_Insights_{time.strftime('%H%M')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "⬇ 下载汇总汇报.docx",
+                                data=st.session_state["ai_docx_gen_bytes"],
+                                file_name=f"Report_{time.strftime('%H%M')}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                 type="primary",
                                 use_container_width=True,
                             )
                             
                     with ec2:
-                        if st.button("📑 生成高级演示 PPT", use_container_width=True, type="secondary"):
-                            with st.spinner("🧠 编排 Agent 正在重构幻灯片逻辑流与对象数据..."):
+                        if st.button("📊 提取矩阵至 Excel", use_container_width=True, type="secondary"):
+                            with st.spinner("正在提取数据为 Excel 矩阵…"):
+                                st.session_state["ai_excel_bytes"] = _ai_response_to_excel(last_ai_msg, st.session_state.get("chat_doc_name", "document"))
+                        
+                        if "ai_excel_bytes" in st.session_state:
+                            st.download_button(
+                                "⬇ 下载数据表.xlsx",
+                                data=st.session_state["ai_excel_bytes"],
+                                file_name=f"Data_{time.strftime('%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                type="primary",
+                                use_container_width=True,
+                            )
+                            
+                    with ec3:
+                        if st.button("📑 构建结构化 PPT", use_container_width=True, type="secondary"):
+                            with st.spinner("🧠 编排 Agent 正在重构幻灯片逻辑流..."):
                                 st.session_state["ai_ppt_bytes"] = _ai_response_to_pptx(last_ai_msg, doc_text, st.session_state.get("chat_doc_name", "document"), model)
                         
                         if "ai_ppt_bytes" in st.session_state:
                             st.download_button(
-                                "⬇ 确认下载 PPT 文稿",
+                                "⬇ 下载演示文稿.pptx",
                                 data=st.session_state["ai_ppt_bytes"],
-                                file_name=f"AI_Presentation_{time.strftime('%H%M')}.pptx",
+                                file_name=f"Presentation_{time.strftime('%H%M')}.pptx",
                                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                                 type="primary",
                                 use_container_width=True,
@@ -1414,7 +1389,7 @@ def _call_chat_llm(system_prompt: str, user_msg: str, model: str) -> str:
         if model.startswith("claude"):
             from langchain_anthropic import ChatAnthropic
             from langchain_core.messages import HumanMessage, SystemMessage
-            llm = ChatAnthropic(model=model, temperature=0.2, max_tokens=2048)
+            llm = ChatAnthropic(model=model, temperature=0.15, max_tokens=3000)
         else:
             from langchain_openai import ChatOpenAI
             from langchain_core.messages import HumanMessage, SystemMessage
@@ -1424,17 +1399,17 @@ def _call_chat_llm(system_prompt: str, user_msg: str, model: str) -> str:
                 api_key  = os.environ.get("DASHSCOPE_API_KEY", "")
                 if not api_key:
                     return "❌ 未找到 DASHSCOPE_API_KEY。请在侧边栏「🔑 API 密钥」配置。"
-                llm = ChatOpenAI(model=model, temperature=0.2, max_tokens=2048, base_url=base_url, api_key=api_key)
+                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000, base_url=base_url, api_key=api_key)
             elif model.startswith("deepseek"):
                 base_url = "https://api.deepseek.com/v1"
                 api_key  = os.environ.get("DEEPSEEK_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-                llm = ChatOpenAI(model=model, temperature=0.2, max_tokens=2048, base_url=base_url, api_key=api_key)
+                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000, base_url=base_url, api_key=api_key)
             elif model.startswith("gemini"):
                 base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
                 api_key  = os.environ.get("GOOGLE_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-                llm = ChatOpenAI(model=model, temperature=0.2, max_tokens=2048, base_url=base_url, api_key=api_key)
+                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000, base_url=base_url, api_key=api_key)
             else:
-                llm = ChatOpenAI(model=model, temperature=0.2, max_tokens=2048)
+                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000)
 
         resp = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_msg)])
         return resp.content.strip()
@@ -1462,6 +1437,75 @@ def _parse_md_tables(text):
                 continue
         i += 1
     return tables
+
+def _ai_response_to_docx_local(ai_text: str, doc_name: str) -> bytes:
+    """Native conversion from AI Markdown directly to Docx"""
+    import io
+    import re
+    try:
+        from docx import Document
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise ImportError("python-docx is required. Please install it with: pip install python-docx")
+
+    doc = Document()
+    
+    # Apply global styles
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Microsoft YaHei'
+    font.size = Pt(11)
+
+    # Main Title
+    title = doc.add_heading('智能文档审阅与汇总分析报告', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_font = title.runs[0].font
+    title_font.name = 'Microsoft YaHei'
+    title_font.color.rgb = RGBColor(0x2D, 0x1B, 0x69)
+
+    # Metadata
+    p_meta = doc.add_paragraph()
+    p_meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_meta = p_meta.add_run(f"来源数据列阵: {doc_name}\n编译生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    run_meta.font.size = Pt(9)
+    run_meta.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+
+    doc.add_page_break()
+
+    # Iterative basic markdown parsing
+    for line in ai_text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+            
+        if line.startswith('### '):
+            h = doc.add_heading(line[4:].strip(), level=3)
+            h.runs[0].font.name = 'Microsoft YaHei'
+        elif line.startswith('## '):
+            h = doc.add_heading(line[3:].strip(), level=2)
+            h.runs[0].font.name = 'Microsoft YaHei'
+            h.runs[0].font.color.rgb = RGBColor(0x4A, 0x2C, 0x99)
+        elif line.startswith('# '):
+            h = doc.add_heading(line[2:].strip(), level=1)
+            h.runs[0].font.name = 'Microsoft YaHei'
+            h.runs[0].font.color.rgb = RGBColor(0x2D, 0x1B, 0x69)
+        elif line.startswith('- ') or line.startswith('* '):
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', line[2:])
+            p = doc.add_paragraph(clean_text, style='List Bullet')
+        elif re.match(r'^\d+\.\s', line):
+            clean_text = re.sub(r'^\d+\.\s', '', line)
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)
+            p = doc.add_paragraph(clean_text, style='List Number')
+        else:
+            # Handle inline bolding basic regex mapping
+            clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
+            doc.add_paragraph(clean_line)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
 
 def _ai_response_to_excel(ai_text, doc_name):
     import openpyxl
@@ -1538,57 +1582,28 @@ def _ai_response_to_excel(ai_text, doc_name):
 def _ai_response_to_pptx(ai_text: str, doc_text: str, doc_name: str, model: str) -> bytes:
     from export_service import build_pptx
     import json
-
-    system_prompt = """你是一个高级 PPT 报告编排 Agent。你的任务是根据提供的【文档原始文本】和刚才的【AI 分析主干】，拆解并重组信息，输出符合以下 JSON Schema 的严格数据结构以供 PPT 渲染引擎调用。
-【指令红线】
-1. 数据极度保真：所有数字、项目、公司名必须源自原文提取，严禁臆造或使用 [占位符]。
-2. 输出必须是一个纯净合法的 JSON 字符串，不能包裹任何 markdown 格式（如禁止包含 ```json 标签）。
-
-【标准 JSON 框架】
+    import re
+    
+    system_prompt = """你是一个高级 PPT 数据构造引擎。提取文档内容，输出符合以下 JSON Schema 的纯净 JSON 字符串，不要带 markdown 代码块。
 {
-    "summary": "一段约200字的报告高管摘要",
-    "topics": ["最多提取6个关键词块"],
-    "entities": ["关键团队/项目/合作方 1", "实体2"],
-    "dates": ["核心日期/节点 1"],
-    "actions": ["分配到的动作/KPI 1", "动作2"],
-    "sentiment": "positive",
-    "page_count": 1,
-    "char_count": 2000,
+    "summary": "核心执行摘要", "topics": ["主题1"], "entities": ["实体1"], "dates": ["日期"], "actions": ["行动"],
+    "page_count": 1, "char_count": 2000,
     "sections": [
-        {
-            "title": "战略目标拆解",
-            "content": ["第一点战略支撑", "第二点战略支撑"],
-            "type": "bullets"
-        },
-        {
-            "title": "财务目标 / 预算卡片",
-            "content": [
-                ["KPI 指标", "目标额度"],
-                ["营业总收入", "2,470万元"]
-            ],
-            "type": "table"
-        }
+        {"title": "财务目标", "content": [["指标", "数值"], ["净利润", "100万"]], "type": "table"}
     ]
 }"""
-
-    user_msg = f"【AI 前序分析主干】\n{ai_text}\n\n【底层原始文稿库】\n{doc_text[:12000]}"
-    raw_response = _call_chat_llm(system_prompt, user_msg, model)
-    
+    raw_response = _call_chat_llm(system_prompt, f"AI思考:{ai_text}\n原文:{doc_text[:10000]}", model)
     try:
-        cleaned = raw_response.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+        # 完全规避由于硬编码三个反引号导致的任何 Markdown 解析器截断或崩溃 Bug
+        MD_TICK = chr(96) * 3
+        cleaned = re.sub(r"^" + MD_TICK + r"(?:json)?\s*", "", raw_response.strip())
+        cleaned = re.sub(r"\s*" + MD_TICK + r"$", "", cleaned).strip()
         info = json.loads(cleaned)
     except Exception as e:
         info = {
-            "summary": f"JSON 解析熔断，触发降级保护。\n\nAI原推演：{ai_text[:500]}",
-            "topics": ["解析异常"],
-            "entities": [], "dates": [], "actions": [],
-            "sentiment": "neutral",
-            "sections": [{"title": "推理底稿", "content": ai_text, "type": "text"}]
+            "summary": "解析失败回退", 
+            "sections": [{"title": "提取异常", "content": f"无法解析 JSON。错误: {str(e)}", "type": "text"}]
         }
-
     return build_pptx(info, source_filename=doc_name)
 
 
@@ -1597,15 +1612,9 @@ def _ai_response_to_pptx(ai_text: str, doc_text: str, doc_name: str, model: str)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _sidebar()
-
 page = st.session_state.page
-if page == "1_template":
-    page_template()
-elif page == "2_extract":
-    page_extract()
-elif page == "3_review":
-    page_review()
-elif page == "4_console":
-    page_console()
-else:
-    page_template()
+if page == "1_template": page_template()
+elif page == "2_extract": page_extract()
+elif page == "3_review": page_review()
+elif page == "4_console": page_console()
+else: page_template()

@@ -1,39 +1,146 @@
 #!/usr/bin/env python3
 """
-export_service.py — Generate polished PowerPoint reports from extracted document data.
-
-Public API:
-    build_pptx(info: dict, source_filename: str) -> bytes   # returns raw .pptx bytes
-
-`info` dict schema (all keys optional except 'summary'):
-    summary       str        — main document summary text
-    topics        list[str]  — key topics / themes
-    entities      list[str]  — named entities (people, orgs, places)
-    dates         list[str]  — dates / time references
-    actions       list[str]  — action items or recommendations
-    sentiment     str        — "positive" | "neutral" | "negative" | free text
-    language      str        — detected language label (e.g. "Chinese", "English")
-    page_count    int        — source document page count
-    char_count    int        — total extracted characters
-    sections      list[dict] — optional extra sections: [{title, content, type}]
-                               type: "bullets" | "text" | "table"
+export_service.py — Unified Export Engine
+Contains builders for Excel, Word (DOCX), and PowerPoint (PPTX).
 """
 
 from __future__ import annotations
-import io, re, math, datetime
-from typing import Any, List
+import io
+import re
+import datetime
+from typing import Any, List, Dict
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. EXCEL EXPORT (For Page 3: Batch Extraction Results)
+# ──────────────────────────────────────────────────────────────────────────────
+def build_excel(task: Any, template: Any, results_to_export: List[Any], include_log: bool = True) -> bytes:
+    import pandas as pd
+    
+    data = []
+    field_keys = [f.key for f in template.fields]
+    field_names = [f.name for f in template.fields]
+
+    for r in results_to_export:
+        status_val = r.status.value if hasattr(r, 'status') and hasattr(r.status, 'value') else str(getattr(r, 'status', ''))
+        
+        row = {
+            "文件名": getattr(r, "filename", ""),
+            "状态": status_val,
+            "耗时(s)": round(getattr(r, "elapsed_seconds", 0.0) or 0.0, 1),
+        }
+        
+        f_dict = {fv.key: fv for fv in getattr(r, "fields", [])}
+        for f_key, f_name in zip(field_keys, field_names):
+            if f_key in f_dict:
+                val = f_dict[f_key].value
+                if isinstance(val, list):
+                    val = ", ".join(map(str, val))
+                elif isinstance(val, bool):
+                    val = "是" if val else "否"
+                row[f_name] = str(val) if val is not None else ""
+            else:
+                row[f_name] = ""
+                
+        if include_log:
+            issues = getattr(r, "issues", [])
+            row["日志警告"] = "\n".join([f"[{i.field_name}] {i.message}" for i in issues]) if issues else "无异常"
+            
+        data.append(row)
+
+    df = pd.DataFrame(data)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='数据提取明细')
+        worksheet = writer.sheets['数据提取明细']
+        for idx, col in enumerate(df.columns):
+            max_len = max((df[col].astype(str).map(len).max(), len(col))) + 2
+            worksheet.column_dimensions[chr(65 + idx)].width = min(max_len, 50)
+            
+    return buf.getvalue()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. DOCX EXPORT (For Page 3: Batch Extraction Results)
+# ──────────────────────────────────────────────────────────────────────────────
+def build_docx(task: Any, template: Any, results_to_export: List[Any], include_log: bool = True) -> bytes:
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    
+    style = doc.styles['Normal']
+    style.font.name = 'Microsoft YaHei'
+    try:
+        from docx.oxml.ns import qn
+        style.font.element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
+    except Exception:
+        pass
+    style.font.size = Pt(10.5)
+
+    title = doc.add_heading('批量文档智能萃取报告', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    task_name = getattr(task, "name", "未知任务")
+    p_meta = doc.add_paragraph()
+    p_meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p_meta.add_run(f"任务名称: {task_name} | 导出时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    run.font.color.rgb = RGBColor(120, 120, 120)
+    run.font.size = Pt(9)
+    
+    for idx, r in enumerate(results_to_export):
+        h1 = doc.add_heading(f"{idx+1}. {getattr(r, 'filename', 'Unknown')}", level=1)
+        h1.runs[0].font.color.rgb = RGBColor(75, 46, 131)
+        
+        status_val = r.status.value if hasattr(r, 'status') and hasattr(r.status, 'value') else str(getattr(r, 'status', ''))
+        elapsed = getattr(r, "elapsed_seconds", 0)
+        doc.add_paragraph(f"解析状态: {status_val}   耗时: {round(elapsed or 0, 1)}s")
+
+        fields_list = getattr(r, "fields", [])
+        if fields_list:
+            table = doc.add_table(rows=1, cols=2)
+            table.style = 'Table Grid'
+            hdr_cells = table.rows[0].cells
+            hdr_cells[0].text = '字段名称'
+            hdr_cells[1].text = '提取内容'
+            
+            for fv in fields_list:
+                row_cells = table.add_row().cells
+                row_cells[0].text = str(fv.name)
+                val = fv.value
+                if isinstance(val, list):
+                    val = ", ".join(map(str, val))
+                elif isinstance(val, bool):
+                    val = "是" if val else "否"
+                row_cells[1].text = str(val) if val is not None else ""
+        
+        if include_log:
+            issues = getattr(r, "issues", [])
+            if issues:
+                doc.add_heading("⚠️ 预警与问题", level=3)
+                for issue in issues:
+                    doc.add_paragraph(f"[{issue.field_name}] {issue.message}", style='List Bullet')
+        
+        if idx < len(results_to_export) - 1:
+            doc.add_page_break()
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. PPTX EXPORT (For Page 4: AI Console Presentation)
+# ──────────────────────────────────────────────────────────────────────────────
 try:
     from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
+    from pptx.util import Inches, Pt
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN
 except ImportError:
-    raise ImportError("python-pptx required: pip install python-pptx")
+    pass
 
-
-# ─── Design tokens ────────────────────────────────────────────────────────────
-
+# Design tokens
 W = Inches(13.33)
 H = Inches(7.5)
 
@@ -54,15 +161,11 @@ C_DIVIDER      = RGBColor(0xE5, 0xE7, 0xEB)
 FONT_DISPLAY = "Calibri"
 FONT_BODY    = "Calibri"
 
-# Layout limits — if content exceeds these, additional slides are auto-created
-BULLETS_PER_SLIDE  = 7    # max bullet items per slide
-CHARS_PER_SLIDE    = 900  # max characters of body text per slide
-PILLS_PER_SLIDE    = 12   # max topic pills per slide (3-col × 4-row)
-ITEMS_PER_LIST_SLIDE = 10  # max entities or dates per two-column slide
-ACTIONS_PER_SLIDE  = 7    # max action rows per slide
-
-
-# ─── Markdown stripper ────────────────────────────────────────────────────────
+BULLETS_PER_SLIDE  = 7
+CHARS_PER_SLIDE    = 900
+PILLS_PER_SLIDE    = 12
+ITEMS_PER_LIST_SLIDE = 10
+ACTIONS_PER_SLIDE  = 7
 
 def _strip_md(text: str) -> str:
     if not text:
@@ -76,14 +179,10 @@ def _strip_md(text: str) -> str:
     text = re.sub(r"\n{3,}",           "\n\n", text)
     return text.strip()
 
-
 def _chunk_list(lst: list, size: int) -> list:
-    """Split a list into chunks of at most `size` items."""
     return [lst[i:i+size] for i in range(0, max(len(lst), 1), size)]
 
-
 def _chunk_text(text: str, max_chars: int) -> list:
-    """Split long text into chunks that fit within max_chars, respecting paragraphs."""
     paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
     chunks, current, current_len = [], [], 0
     for para in paragraphs:
@@ -96,14 +195,10 @@ def _chunk_text(text: str, max_chars: int) -> list:
         chunks.append("\n".join(current))
     return chunks or [text]
 
-
-# ─── Low-level helpers ────────────────────────────────────────────────────────
-
 def _slide_bg(slide, color: RGBColor):
     fill = slide.background.fill
     fill.solid()
     fill.fore_color.rgb = color
-
 
 def _rect(slide, x, y, w, h, fill=None, line_color=None, line_width=0):
     shape = slide.shapes.add_shape(1, x, y, w, h)
@@ -119,7 +214,6 @@ def _rect(slide, x, y, w, h, fill=None, line_color=None, line_width=0):
     else:
         shape.line.fill.background()
     return shape
-
 
 def _text_box(slide, x, y, w, h, text: str, *,
               font_name=FONT_BODY, font_size=14, bold=False, italic=False,
@@ -140,12 +234,10 @@ def _text_box(slide, x, y, w, h, text: str, *,
     run.font.color.rgb = color
     return txb
 
-
 def _text_box_multiline(slide, x, y, w, h, lines: list, *,
                          font_name=FONT_BODY, font_size=13,
                          color=C_GRAY_TEXT, bullet_color=C_PURPLE_MID,
                          indent=True):
-    """Add a text box with one paragraph per line, each with a bullet marker."""
     txb = slide.shapes.add_textbox(x, y, w, h)
     txb.word_wrap = True
     tf = txb.text_frame
@@ -163,7 +255,6 @@ def _text_box_multiline(slide, x, y, w, h, lines: list, *,
         run.font.color.rgb = color
     return txb
 
-
 def _footer(slide, label: str = "AI Document Analysis"):
     bar_h = Inches(0.28)
     _rect(slide, 0, H - bar_h, W, bar_h, fill=C_PURPLE_DARK)
@@ -172,7 +263,6 @@ def _footer(slide, label: str = "AI Document Analysis"):
     ts = datetime.datetime.now().strftime("%Y-%m-%d")
     _text_box(slide, W - Inches(2), H - bar_h, Inches(1.9), bar_h,
               ts, font_size=8, color=RGBColor(0xCC, 0xBB, 0xFF), align=PP_ALIGN.RIGHT)
-
 
 def _section_heading(slide, title: str, y_pos, subtitle: str = ""):
     _rect(slide, Inches(0.4), y_pos, Inches(0.06), Inches(0.38), fill=C_PURPLE_MID)
@@ -183,15 +273,10 @@ def _section_heading(slide, title: str, y_pos, subtitle: str = ""):
         _text_box(slide, Inches(0.6), y_pos + Inches(0.42), Inches(11.5), Inches(0.32),
                   subtitle, font_size=10, color=C_MUTED)
 
-
 def _content_card(slide, x, y, w, h, accent_color=None):
-    """White card with optional colored top bar."""
     _rect(slide, x, y, w, h, fill=C_CARD_BG, line_color=C_DIVIDER, line_width=1)
     if accent_color:
         _rect(slide, x, y, w, Inches(0.055), fill=accent_color)
-
-
-# ─── Slide builders ───────────────────────────────────────────────────────────
 
 def _slide_cover(prs, info: dict, source_filename: str):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -237,21 +322,7 @@ def _slide_cover(prs, info: dict, source_filename: str):
         _text_box(slide, cx, y + Inches(0.98), card_w, Inches(0.32),
                   label, font_size=11, color=RGBColor(0xCC, 0xBB, 0xFF), align=PP_ALIGN.CENTER)
 
-    sentiment = info.get("sentiment", "neutral").lower()
-    s_color = C_GREEN if "pos" in sentiment else (C_RED if "neg" in sentiment else C_TEAL)
-    s_label = ("🟢 正面" if "pos" in sentiment
-               else ("🔴 负面" if "neg" in sentiment else "🔵 中性"))
-    _rect(slide, Inches(0.7), Inches(5.35), Inches(2.5), Inches(0.48),
-          fill=RGBColor(0x3D, 0x27, 0x7B), line_color=s_color, line_width=2)
-    _text_box(slide, Inches(0.7), Inches(5.35), Inches(2.5), Inches(0.48),
-              f"情感倾向: {s_label}", font_size=12, bold=True,
-              color=C_WHITE, align=PP_ALIGN.CENTER)
-
-
 def _slides_summary(prs, info: dict):
-    """
-    Summary — auto-splits into multiple slides if text exceeds CHARS_PER_SLIDE.
-    """
     summary = _strip_md(info.get("summary", "暂无摘要。"))
     chunks = _chunk_text(summary, CHARS_PER_SLIDE)
 
@@ -270,15 +341,10 @@ def _slides_summary(prs, info: dict):
                   chunk, font_size=15, color=C_GRAY_TEXT, word_wrap=True)
         _footer(slide)
 
-
 def _slides_topics(prs, info: dict):
-    """
-    Topics pill grid — auto-adds slides for every PILLS_PER_SLIDE topics.
-    """
     topics = info.get("topics", [])
     if not topics:
         return
-
     chunks = _chunk_list(topics, PILLS_PER_SLIDE)
     pill_colors = [C_PURPLE_MID, C_TEAL, C_AMBER,
                    RGBColor(0x06, 0x82, 0x72), RGBColor(0x15, 0x78, 0xC2)]
@@ -305,11 +371,7 @@ def _slides_topics(prs, info: dict):
                       color=C_WHITE, align=PP_ALIGN.CENTER)
         _footer(slide)
 
-
 def _slides_entities_dates(prs, info: dict):
-    """
-    Entities + Dates — each list auto-splits into additional slides when long.
-    """
     entities = info.get("entities", [])
     dates    = info.get("dates", [])
     if not entities and not dates:
@@ -332,40 +394,36 @@ def _slides_entities_dates(prs, info: dict):
         card_h = H - Inches(1.7)
         card_y = Inches(1.0)
 
-        # Entities card
-        _content_card(slide, Inches(0.4), card_y, half_w, card_h, C_PURPLE_MID)
-        _text_box(slide, Inches(0.5), card_y + Inches(0.1), half_w - Inches(0.2), Inches(0.42),
-                  "📌 关键实体", font_size=13, bold=True, color=C_PURPLE_DARK)
-        for i, ent in enumerate(e_chunk):
-            ey = card_y + Inches(0.58) + i * Inches(0.5)
-            if ey + Inches(0.42) > card_y + card_h - Inches(0.15):
-                break
-            _rect(slide, Inches(0.5), ey, Inches(0.06), Inches(0.32), fill=C_PURPLE_MID)
-            _text_box(slide, Inches(0.68), ey - Inches(0.03),
-                      half_w - Inches(0.35), Inches(0.42),
-                      _strip_md(ent), font_size=12, color=C_GRAY_TEXT)
+        if e_chunk:
+            _content_card(slide, Inches(0.4), card_y, half_w, card_h, C_PURPLE_MID)
+            _text_box(slide, Inches(0.5), card_y + Inches(0.1), half_w - Inches(0.2), Inches(0.42),
+                      "📌 关键实体", font_size=13, bold=True, color=C_PURPLE_DARK)
+            for i, ent in enumerate(e_chunk):
+                ey = card_y + Inches(0.58) + i * Inches(0.5)
+                if ey + Inches(0.42) > card_y + card_h - Inches(0.15):
+                    break
+                _rect(slide, Inches(0.5), ey, Inches(0.06), Inches(0.32), fill=C_PURPLE_MID)
+                _text_box(slide, Inches(0.68), ey - Inches(0.03),
+                          half_w - Inches(0.35), Inches(0.42),
+                          _strip_md(ent), font_size=12, color=C_GRAY_TEXT)
 
-        # Dates card
-        dx = W / 2 + Inches(0.2)
-        _content_card(slide, dx, card_y, half_w, card_h, C_TEAL)
-        _text_box(slide, dx + Inches(0.1), card_y + Inches(0.1),
-                  half_w - Inches(0.2), Inches(0.42),
-                  "📅 时间节点", font_size=13, bold=True, color=C_TEAL)
-        for i, dt in enumerate(d_chunk):
-            dy_pos = card_y + Inches(0.58) + i * Inches(0.5)
-            if dy_pos + Inches(0.42) > card_y + card_h - Inches(0.15):
-                break
-            _rect(slide, dx + Inches(0.1), dy_pos, Inches(0.06), Inches(0.32), fill=C_TEAL)
-            _text_box(slide, dx + Inches(0.28), dy_pos - Inches(0.03),
-                      half_w - Inches(0.35), Inches(0.42),
-                      _strip_md(dt), font_size=12, color=C_GRAY_TEXT)
+        if d_chunk:
+            dx = W / 2 + Inches(0.2)
+            _content_card(slide, dx, card_y, half_w, card_h, C_TEAL)
+            _text_box(slide, dx + Inches(0.1), card_y + Inches(0.1),
+                      half_w - Inches(0.2), Inches(0.42),
+                      "📅 时间节点", font_size=13, bold=True, color=C_TEAL)
+            for i, dt in enumerate(d_chunk):
+                dy_pos = card_y + Inches(0.58) + i * Inches(0.5)
+                if dy_pos + Inches(0.42) > card_y + card_h - Inches(0.15):
+                    break
+                _rect(slide, dx + Inches(0.1), dy_pos, Inches(0.06), Inches(0.32), fill=C_TEAL)
+                _text_box(slide, dx + Inches(0.28), dy_pos - Inches(0.03),
+                          half_w - Inches(0.35), Inches(0.42),
+                          _strip_md(dt), font_size=12, color=C_GRAY_TEXT)
         _footer(slide)
 
-
 def _slides_actions(prs, info: dict):
-    """
-    Action items — one slide per ACTIONS_PER_SLIDE items.
-    """
     actions = info.get("actions", [])
     if not actions:
         return
@@ -383,7 +441,7 @@ def _slides_actions(prs, info: dict):
         row_h   = Inches(0.68)
         row_w   = W - Inches(0.8)
         start_y = Inches(1.05)
-        global_i = idx * ACTIONS_PER_SLIDE  # keep badge numbers sequential across slides
+        global_i = idx * ACTIONS_PER_SLIDE 
 
         for i, action in enumerate(chunk):
             ry = start_y + i * (row_h + Inches(0.1))
@@ -401,16 +459,7 @@ def _slides_actions(prs, info: dict):
                       _strip_md(action), font_size=13, color=C_GRAY_TEXT)
         _footer(slide)
 
-
 def _slides_extra_sections(prs, info: dict):
-    """
-    Render any extra sections passed in info['sections'].
-    Each section: {title, content, type}
-      type = "text"    -> auto-paginated text card
-      type = "bullets" -> auto-paginated bullet list
-      type = "table"   -> simple 2-column key/value table
-                         content = list of [key, value] pairs
-    """
     sections = info.get("sections", [])
     if not sections:
         return
@@ -461,79 +510,41 @@ def _slides_extra_sections(prs, info: dict):
                 _footer(slide)
 
         elif stype == "table":
-            rows = content if isinstance(content, list) else []
-            chunks = _chunk_list(rows, 12)  # up to 12 rows per slide
+            rows_data = content if isinstance(content, list) else []
+            if not rows_data: continue
+            
+            num_cols = max(len(r) for r in rows_data) if rows_data else 1
+            chunks = _chunk_list(rows_data, 8) 
+            
             for idx, chunk in enumerate(chunks):
                 slide = prs.slides.add_slide(prs.slide_layouts[6])
                 _slide_bg(slide, C_BG_LIGHT)
                 subtitle = f"({idx+1}/{len(chunks)})" if len(chunks) > 1 else ""
                 _section_heading(slide, title, Inches(0.38), subtitle)
 
-                col_w = (W - Inches(0.8)) / 2
-                row_h = Inches(0.48)
-                start_y = Inches(1.1)
+                table_x, table_y = Inches(0.5), Inches(1.1)
+                table_w, table_h = W - Inches(1.0), Inches(0.5 * len(chunk))
+                
+                table_shape = slide.shapes.add_table(len(chunk), num_cols, table_x, table_y, table_w, table_h)
+                table = table_shape.table
+                
                 for r_idx, row in enumerate(chunk):
-                    ry = start_y + r_idx * (row_h + Inches(0.04))
-                    bg = C_BG_LIGHT if r_idx % 2 == 0 else C_CARD_BG
-                    _rect(slide, Inches(0.4), ry, W - Inches(0.8), row_h, fill=bg,
-                          line_color=C_DIVIDER, line_width=1)
-                    key_text = _strip_md(str(row[0])) if len(row) > 0 else ""
-                    val_text = _strip_md(str(row[1])) if len(row) > 1 else ""
-                    _text_box(slide, Inches(0.55), ry + Inches(0.06),
-                              col_w - Inches(0.3), row_h - Inches(0.1),
-                              key_text, font_size=12, bold=True, color=C_PURPLE_DARK)
-                    _text_box(slide, Inches(0.4) + col_w + Inches(0.15), ry + Inches(0.06),
-                              col_w - Inches(0.3), row_h - Inches(0.1),
-                              val_text, font_size=12, color=C_GRAY_TEXT)
+                    for c_idx, val in enumerate(row):
+                        cell = table.cell(r_idx, c_idx)
+                        cell.text = _strip_md(str(val))
+                        
+                        for paragraph in cell.text_frame.paragraphs:
+                            paragraph.alignment = PP_ALIGN.LEFT
+                            for run in paragraph.runs:
+                                run.font.name = FONT_BODY
+                                run.font.size = Pt(13)
+                                if r_idx == 0 or c_idx == 0:
+                                    run.font.bold = True
+                                    run.font.color.rgb = C_PURPLE_DARK
+                                else:
+                                    run.font.color.rgb = C_GRAY_TEXT
+
                 _footer(slide)
-
-
-def _slide_sentiment(prs, info: dict):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _slide_bg(slide, C_BG_LIGHT)
-    _section_heading(slide, "情感分析", Inches(0.38))
-
-    sentiment = (info.get("sentiment") or "neutral").lower()
-    lang      = info.get("language", "")
-
-    if "pos" in sentiment:
-        emoji, label, color = "😊", "正面 / Positive", C_GREEN
-    elif "neg" in sentiment:
-        emoji, label, color = "😟", "负面 / Negative", C_RED
-    else:
-        emoji, label, color = "😐", "中性 / Neutral", C_TEAL
-
-    card_w, card_h = Inches(7), Inches(3.8)
-    card_x = (W - card_w) / 2
-    card_y = Inches(1.2)
-    _content_card(slide, card_x, card_y, card_w, card_h, color)
-
-    _text_box(slide, card_x, card_y + Inches(0.2), card_w, Inches(1.2),
-              emoji, font_size=60, align=PP_ALIGN.CENTER, color=color)
-    _text_box(slide, card_x, card_y + Inches(1.45), card_w, Inches(0.7),
-              label, font_size=28, bold=True, color=color, align=PP_ALIGN.CENTER)
-    if lang:
-        _text_box(slide, card_x, card_y + Inches(2.2), card_w, Inches(0.45),
-                  f"语言: {lang}", font_size=14, color=C_MUTED, align=PP_ALIGN.CENTER)
-
-    lights = [
-        ("正面", "pos" in sentiment, C_GREEN),
-        ("中性", sentiment in ("neutral", "中性", ""), C_TEAL),
-        ("负面", "neg" in sentiment, C_RED),
-    ]
-    light_w, light_gap = Inches(1.8), Inches(0.4)
-    lx = (W - (light_w * 3 + light_gap * 2)) / 2
-    ly = card_y + card_h + Inches(0.3)
-    for lbl, active, lc in lights:
-        fill = lc if active else RGBColor(0xE5, 0xE7, 0xEB)
-        _rect(slide, lx, ly, light_w, Inches(0.52), fill=fill,
-              line_color=lc, line_width=1)
-        _text_box(slide, lx, ly, light_w, Inches(0.52),
-                  lbl, font_size=14, bold=active,
-                  color=C_WHITE if active else C_MUTED, align=PP_ALIGN.CENTER)
-        lx += light_w + light_gap
-    _footer(slide)
-
 
 def _slide_closing(prs, source_filename: str):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -554,63 +565,19 @@ def _slide_closing(prs, source_filename: str):
               ts, font_size=12, color=RGBColor(0xAA, 0x99, 0xDD), align=PP_ALIGN.CENTER)
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
-
 def build_pptx(info: dict, source_filename: str = "document") -> bytes:
-    """
-    Build a dynamic PowerPoint report whose slide count scales with content.
-
-    Slide count is driven entirely by the data in `info`:
-      - Long summaries    → multiple summary slides
-      - Many topics       → multiple topic pill slides  (PILLS_PER_SLIDE=12 each)
-      - Many entities     → multiple entity/date slides (ITEMS_PER_LIST_SLIDE=10 each)
-      - Many actions      → multiple action slides      (ACTIONS_PER_SLIDE=7 each)
-      - Extra sections    → one or more slides each     (text/bullets/table)
-      - Sentiment slide   → always 1
-      - Cover + Closing   → always 1 each
-
-    Minimum: 4 slides (Cover + Summary + Sentiment + Closing).
-    Maximum: unbounded — scales with document content.
-
-    Args:
-        info            : extraction dict (see module docstring for schema)
-        source_filename : original filename shown on cover slide
-
-    Returns:
-        Raw .pptx bytes — write to disk or stream via HTTP response.
-    """
     prs = Presentation()
     prs.slide_width  = W
     prs.slide_height = H
 
-    _slide_cover(prs, info, source_filename)          # always 1
-    _slides_summary(prs, info)                        # 1..N
-    _slides_topics(prs, info)                         # 0..N
-    _slides_entities_dates(prs, info)                 # 0..N
-    _slides_actions(prs, info)                        # 0..N
-    _slides_extra_sections(prs, info)                 # 0..N (custom sections)
-    _slide_sentiment(prs, info)                       # always 1
-    _slide_closing(prs, source_filename)              # always 1
+    _slide_cover(prs, info, source_filename)
+    _slides_summary(prs, info)
+    _slides_topics(prs, info)
+    _slides_entities_dates(prs, info)
+    _slides_actions(prs, info)
+    _slides_extra_sections(prs, info)
+    _slide_closing(prs, source_filename)
 
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
-
-
-# ─── CLI ─────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import json, sys
-
-    if len(sys.argv) < 2:
-        print("Usage: python export_service.py <info.json> [output.pptx]")
-        sys.exit(1)
-
-    with open(sys.argv[1], encoding="utf-8") as f:
-        info = json.load(f)
-
-    out_path = sys.argv[2] if len(sys.argv) > 2 else "report.pptx"
-    raw = build_pptx(info, info.get("source_filename", "document"))
-    with open(out_path, "wb") as f:
-        f.write(raw)
-    print(f"Saved: {out_path}  ({len(raw):,} bytes, {len(info.get('topics',[])) + len(info.get('actions',[])) + len(info.get('sections',[])) + 4} slides approx.)")
