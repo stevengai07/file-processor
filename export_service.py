@@ -176,16 +176,25 @@ def build_pptx(info: dict, source_filename: str = "document") -> bytes:
     ACTIONS_PER_SLIDE  = 7
 
     def _strip_md(text: str) -> str:
-        if not text:
+        """Remove simple Markdown without regex backreference artefacts."""
+        if text is None:
             return ""
-        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-        text = re.sub(r"\*(.+?)\*",       r"\1", text)
-        text = re.sub(r"`(.+?)`",           r"\1", text)
-        text = re.sub(r"^#{1,6}\s+",       "",  text, flags=re.M)
-        text = re.sub(r"^[-–—]{3,}$",       "",  text, flags=re.M)
-        text = re.sub(r"^[\*\-]\s+",     "",  text, flags=re.M)
-        text = re.sub(r"\n{3,}",           "\n\n", text)
-        return text.strip()
+
+        text = str(text)
+        # A callable replacement avoids emitting literal ``\\1`` / ``\1``.
+        text = re.sub(r"\*\*(.+?)\*\*", lambda m: m.group(1), text)
+        text = re.sub(r"__(.+?)__", lambda m: m.group(1), text)
+        text = re.sub(r"\*(.+?)\*", lambda m: m.group(1), text)
+        text = re.sub(r"_(.+?)_", lambda m: m.group(1), text)
+        text = re.sub(r"`(.+?)`", lambda m: m.group(1), text)
+        text = re.sub(r"~~(.+?)~~", lambda m: m.group(1), text)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.M)
+        text = re.sub(r"^[-–—]{3,}$", "", text, flags=re.M)
+        text = re.sub(r"^[*+-]\s+", "", text, flags=re.M)
+        text = re.sub(r"^\d+[.)]\s+", "", text, flags=re.M)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        # python-pptx/XML cannot safely carry C0 control characters.
+        return re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text).strip()
 
     def _chunk_list(lst: list, size: int) -> list:
         return [lst[i:i+size] for i in range(0, max(len(lst), 1), size)]
