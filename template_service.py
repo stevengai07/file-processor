@@ -232,13 +232,48 @@ def _get(row: pd.Series, role_col: Dict[str, str], role: str) -> str:
     return str(row.get(col, "")).strip()
 
 
+def _is_unnamed_column(col: object) -> bool:
+    name = _normalise(str(col))
+    return not name or name.startswith("unnamed") or name in {"nan", "none"}
+
+
+def _infer_fields_from_headers(columns: List[object]) -> Tuple[List[TemplateField], List[str]]:
+    fields: List[TemplateField] = []
+    errors: List[str] = []
+
+    for raw_name in columns:
+        if raw_name is None or _is_unnamed_column(raw_name):
+            continue
+        name = str(raw_name).strip()
+        if not name:
+            continue
+        fields.append(TemplateField(
+            key=_make_key(name),
+            name=name,
+            description=None,
+            type=FieldType.TEXT,
+            required=False,
+            example=None,
+            prompt_hint=None,
+            order=len(fields),
+        ))
+
+    if not fields:
+        errors.append("模板中未检测到任何有效字段表头。请检查是否正确选择了字段名称行。")
+
+    return fields, errors
+
+
 def _build_fields(df: pd.DataFrame, filename: str) -> Tuple[List[TemplateField], List[str]]:
     """Convert a parsed DataFrame into TemplateField objects."""
     errors: List[str] = []
-    col_role, _ = _map_columns(list(df.columns))
+    col_role, unmapped = _map_columns(list(df.columns))
     role_col = {v: k for k, v in col_role.items()}
 
     if "name" not in role_col:
+        fields, header_errors = _infer_fields_from_headers(list(df.columns))
+        if fields:
+            return fields, header_errors
         errors.append(
             "未能识别字段名称列。请确保模板包含[字段名称]（或同义列名）列。"
             f"当前列名：{list(df.columns)}"
