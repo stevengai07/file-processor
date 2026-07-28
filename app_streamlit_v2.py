@@ -442,17 +442,10 @@ def _sidebar():
         st.markdown("---")
 
         st.markdown("#### ⊕ 模型")
-        provider_map = {
-            "OpenAI":    ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "o1-mini", "o3-mini"],
-            "Anthropic": ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
-            "Alibaba":   ["qwen-turbo", "qwen-plus", "qwen-max"],
-            "DeepSeek":  ["deepseek-chat", "deepseek-coder"],
-            "Gemini":    ["gemini-1.5-flash", "gemini-1.5-pro"],
-        }
-        selected_provider = st.selectbox("", list(provider_map.keys()), index=0, key="sidebar_provider", label_visibility="collapsed")
-        model_list = provider_map[selected_provider]
-        selected_model = st.selectbox("", model_list, index=0, key="sidebar_model", label_visibility="collapsed")
-        st.session_state["selected_model"] = selected_model
+        st.success("🟢 本机 Ollama 已启用")
+        st.code("qwen3.6:latest", language=None)
+        st.caption("所有文档提取、AI 对话与汇报生成均固定使用本机模型，无需 API 密钥。")
+        st.session_state["selected_model"] = "qwen3.6:latest"
 
         st.markdown("---")
 
@@ -462,31 +455,8 @@ def _sidebar():
         st.session_state["ocr_preset_resolved"] = preset_map[ocr_preset]
 
         st.markdown("---")
+        st.caption("本机 Ollama · qwen3.6:latest")
 
-        provider_key_labels = {
-            "OpenAI":    ("OPENAI_API_KEY",    "sk-..."),
-            "Anthropic": ("ANTHROPIC_API_KEY", "sk-ant-..."),
-            "Alibaba":   ("DASHSCOPE_API_KEY", "sk-...（阿里云 Dashscope）"),
-            "DeepSeek":  ("DEEPSEEK_API_KEY",  "sk-...（DeepSeek）"),
-            "Gemini":    ("GOOGLE_API_KEY",     "AIza...（Google AI Studio）"),
-        }
-        env_var, placeholder = provider_key_labels.get(selected_provider, ("API_KEY", "sk-..."))
-        key_already_set = bool(os.environ.get(env_var, ""))
-        expander_label = f"🔑 API 密钥{'  ✅' if key_already_set else '  ⚠️'}"
-        
-        with st.expander(expander_label):
-            api_key_input = st.text_input(
-                f"{env_var}",
-                type="password",
-                placeholder=placeholder,
-            )
-            if api_key_input:
-                os.environ[env_var] = api_key_input
-                st.toast(f"✅ {env_var} 设置成功！", icon="🔑")
-                st.rerun()
-
-        st.markdown("---")
-        st.caption("Powered by LangChain + OpenAI / Anthropic")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1431,37 +1401,27 @@ def page_console():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _call_chat_llm(system_prompt: str, user_msg: str, model: str) -> str:
-    import os
+    """固定调用本机 Ollama 的 qwen3.6:latest 模型。"""
     try:
-        if model.startswith("claude"):
-            from langchain_anthropic import ChatAnthropic
-            from langchain_core.messages import HumanMessage, SystemMessage
-            llm = ChatAnthropic(model=model, temperature=0.15, max_tokens=3000)
-        else:
-            from langchain_openai import ChatOpenAI
-            from langchain_core.messages import HumanMessage, SystemMessage
-            base_url = None
-            if model.startswith("qwen"):
-                base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-                api_key  = os.environ.get("DASHSCOPE_API_KEY", "")
-                if not api_key:
-                    return "❌ 未找到 DASHSCOPE_API_KEY。请在侧边栏「🔑 API 密钥」配置。"
-                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000, base_url=base_url, api_key=api_key)
-            elif model.startswith("deepseek"):
-                base_url = "https://api.deepseek.com/v1"
-                api_key  = os.environ.get("DEEPSEEK_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000, base_url=base_url, api_key=api_key)
-            elif model.startswith("gemini"):
-                base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-                api_key  = os.environ.get("GOOGLE_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000, base_url=base_url, api_key=api_key)
-            else:
-                llm = ChatOpenAI(model=model, temperature=0.15, max_tokens=3000)
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        resp = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_msg)])
-        return resp.content.strip()
+        llm = ChatOpenAI(
+            model="qwen3.6:latest",
+            base_url="http://127.0.0.1:11434/v1",
+            api_key="ollama",
+            temperature=0.15,
+            max_tokens=3000,
+            timeout=120,
+            max_retries=2,
+        )
+        response = llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_msg),
+        ])
+        return response.content.strip()
     except Exception as e:
-        return f"❌ 对话引擎异常：{e}"
+        return f"❌ 本机 Ollama 调用异常：{e}"
 
 
 def _parse_md_tables(text):
@@ -1534,14 +1494,14 @@ def _ai_response_to_docx_local(ai_text: str, doc_name: str) -> bytes:
             h.runs[0].font.name = 'Microsoft YaHei'
             h.runs[0].font.color.rgb = RGBColor(0x2D, 0x1B, 0x69)
         elif line.startswith('- ') or line.startswith('* '):
-            clean_text = re.sub(r'\\*\\*(.*?)\\*\\*', r'\\1', line[2:])
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', line[2:])
             p = doc.add_paragraph(clean_text, style='List Bullet')
         elif re.match(r'^\\d+\\.\\s', line):
             clean_text = re.sub(r'^\\d+\\.\\s', '', line)
-            clean_text = re.sub(r'\\*\\*(.*?)\\*\\*', r'\\1', clean_text)
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)
             p = doc.add_paragraph(clean_text, style='List Number')
         else:
-            clean_line = re.sub(r'\\*\\*(.*?)\\*\\*', r'\\1', line)
+            clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
             doc.add_paragraph(clean_line)
 
     buf = io.BytesIO()

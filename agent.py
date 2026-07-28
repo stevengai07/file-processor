@@ -282,18 +282,38 @@ def _call_llm(
     """
     user_prompt = _build_user_prompt(text, fields)
 
-    model_name = settings.model or "gpt-4o-mini"
-
-    if model_name.startswith("gpt") or model_name.startswith("o1") or model_name.startswith("o3"):
-        response_text = _call_openai(model_name, user_prompt, settings)
-    elif model_name.startswith("claude"):
-        response_text = _call_anthropic(model_name, user_prompt, settings)
-    else:
-        # Generic LangChain fallback
-        response_text = _call_langchain(model_name, user_prompt, settings)
+    model_name = "qwen3.6:latest"
+    response_text = _call_ollama(model_name, user_prompt, settings)
 
     return _parse_json_response(response_text)
 
+
+
+def _call_ollama(model: str, user_prompt: str, settings: ExtractionSettings) -> str:
+    """Call the fixed local Ollama model through its OpenAI-compatible API."""
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage, SystemMessage
+    except ImportError:
+        raise AgentError("langchain-openai 未安装。请运行：pip install langchain-openai")
+
+    llm = ChatOpenAI(
+        model="qwen3.6:latest",
+        base_url="http://127.0.0.1:11434/v1",
+        api_key="ollama",
+        temperature=0,
+        max_tokens=settings.max_tokens or 4096,
+        timeout=settings.timeout_seconds or 120,
+        max_retries=2,
+    )
+    try:
+        response = llm.invoke([
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content=user_prompt),
+        ])
+        return response.content
+    except Exception as e:
+        raise AgentError(f"本机 Ollama 调用失败：{e}") from e
 
 def _call_openai(model: str, user_prompt: str, settings: ExtractionSettings) -> str:
     try:
