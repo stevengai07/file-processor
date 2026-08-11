@@ -24,6 +24,7 @@ import pandas as pd
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+from excel_merge_ui import page_excel_merge
 
 # ── page config (must be first Streamlit call) ────────────────────────────
 st.set_page_config(
@@ -321,6 +322,7 @@ def _sidebar():
             "2_extract":  "② 批量提取",
             "3_review":   "③ 结果审核",
             "4_console":  "④ AI 控制台",
+            "5_excel_merge": "⑤ Excel 合并",
         }
         for key, label in pages.items():
             active = st.session_state.page == key
@@ -355,6 +357,11 @@ def _sidebar():
                 "icon": "🧠", "title": "④ AI 控制台",
                 "用途": "多文档跨篇章追问，基于样板仿写汇总与公文生成。",
                 "格式要求": "支持上传【样板】及【多份目标文件】。",
+            },
+            "5_excel_merge": {
+                "icon": "📊", "title": "⑤ Excel 合并",
+                "用途": "合并多个结构相近的 Excel 文件，并统一字段列。",
+                "格式要求": "上传至少两个 .xlsx 文件；可分别选择工作表。",
             },
         }
         current_page = st.session_state.get("page", "1_template")
@@ -1641,4 +1648,5 @@ if page == "1_template": page_template()
 elif page == "2_extract": page_extract()
 elif page == "3_review": page_review()
 elif page == "4_console": page_console()
+elif page == "5_excel_merge": page_excel_merge()
 else: page_template()
