@@ -1,0 +1,42 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [5 0 R] >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /FontDescriptor 6 0 R >>
+endobj
+6 0 obj
+<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>
+endobj
+7 0 obj
+<< /Length 287 >>
+stream
+BT /F1 12 Tf 72 760 Td <68079898FF1A7EFF827280FD6E90987976EE67506599> Tj ET
+BT /F1 12 Tf 72 738 Td <53D18A0053554F4DFF1A5E7F4E1C770180FD6E9096C656E2> Tj ET
+BT /F1 12 Tf 72 716 Td <672C65874ECB7ECD7EFF827280FD6E90987976EE5EFA8BBE8FDB5C55300162958D4489C46A21548C540E7EED8BA152123002> Tj ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000241 00000 n
+0000000363 00000 n
+0000000534 00000 n
+0000000704 00000 n
+trailer
+<< /Root 1 0 R /Size 8 >>
+startxref
+1042
+%%EOF
