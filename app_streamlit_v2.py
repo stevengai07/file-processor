@@ -293,6 +293,10 @@ def _init_state():
         "chat_template_name": "",
         "console_raw":    None,
         "console_raw_name": "",
+        # 顺序编号
+        "ordering_parse": None,
+        "ordering_task": None,
+        "ordering_file_bytes": {},
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -326,6 +330,7 @@ def _sidebar():
             "3_review":   "③ 结果审核",
             "4_console":  "④ AI 控制台",
             "5_excel_merge": "⑤ Excel 合并",
+            "6_ordering": "⑥ 顺序编号",
         }
         for key, label in pages.items():
             active = st.session_state.page == key
@@ -365,6 +370,11 @@ def _sidebar():
                 "icon": "📊", "title": "⑤ Excel 合并",
                 "用途": "合并多个结构相近的 Excel 文件，并统一字段列。",
                 "格式要求": "上传至少两个 .xlsx 文件；可分别选择工作表。",
+            },
+            "6_ordering": {
+                "icon": "🗂️", "title": "⑥ 顺序编号",
+                "用途": "按发言顺序 Excel 自动匹配 PDF/Word 材料，编号重命名并打包 ZIP。",
+                "格式要求": "上传一份 .xlsx 顺序表，以及一批 PDF/DOCX 文件。",
             },
         }
         current_page = st.session_state.get("page", "1_template")
@@ -1642,6 +1652,470 @@ def _ai_response_to_pptx(ai_text: str, doc_text: str, doc_name: str, model: str)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PAGE 6 — ORDERING / RENAMED ZIP PACKAGING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _ordering_readability_css():
+    """Deprecated: the app now uses a consistent light Streamlit theme."""
+    return
+    st.markdown("""
+<div id="ordering-page-marker" aria-hidden="true"></div>
+<style>
+/* Page 6 only. The body marker condition prevents style leakage after reruns. */
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] h1,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] h2,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] h3,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] h4,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] h5,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] h6 {
+    color: #2D1B69 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] p,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] label,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] label p {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stCaptionContainer,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] small {
+    color: #374151 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stSelectbox > div > div,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stTextInput input,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stTextArea textarea,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stNumberInput input,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-baseweb="select"] > div {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+    border-color: #D1D5DB !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-baseweb="select"] span,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-baseweb="select"] div,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] input,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] textarea {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-baseweb="select"] svg {
+    color: #4B5563 !important;
+    fill: currentColor !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-baseweb="popover"],
+body:has(#ordering-page-marker) [data-baseweb="menu"],
+body:has(#ordering-page-marker) [role="listbox"] {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-baseweb="popover"] *,
+body:has(#ordering-page-marker) [data-baseweb="menu"] *,
+body:has(#ordering-page-marker) [role="listbox"] *,
+body:has(#ordering-page-marker) [role="option"] {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [role="option"]:hover,
+body:has(#ordering-page-marker) [aria-selected="true"][role="option"] {
+    background: #EDE7F6 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileUploader"] section {
+    background: #FFFFFF !important;
+    border: 1px dashed #7B5EA7 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileUploader"] section * {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileUploader"] > div {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChips"],
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChip"] {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+    border: 1px solid #D1D5DB !important;
+    border-radius: var(--radius-md) !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChip"] *,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChipName"] {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileUploader"] button {
+    color: #111827 !important;
+    background: #F9FAFB !important;
+    border: 1px solid #D1D5DB !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileUploader"] svg {
+    color: #4B5563 !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChipDeleteBtn"],
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChipDeleteBtn"] button {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    background: #FFF1F2 !important;
+    color: #B91C1C !important;
+    border: 1px solid #FECDD3 !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChipDeleteBtn"] * {
+    color: #B91C1C !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChipDeleteBtn"]:hover,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFileChipDeleteBtn"] button:hover {
+    background: #FFE4E6 !important;
+    border-color: #FDA4AF !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stAlert"] {
+    background: #FFFFFF !important;
+    border: 1px solid #D1D5DB !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stAlert"] * {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] {
+    background: #FFFFFF !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: var(--radius-md) !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] * {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] details,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] summary,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] div[role="button"] {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] summary *,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stExpander"] div[role="button"] * {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stDataFrame"] * {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stElementToolbarButton"],
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stElementToolbarButton"] button {
+    background: #FFFFFF !important;
+    color: #2D1B69 !important;
+    border: 1px solid #D1D5DB !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stElementToolbarButton"] *,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stElementToolbarButtonIcon"] {
+    color: #2D1B69 !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stElementToolbarButton"]:hover,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stElementToolbarButton"] button:hover {
+    background: #EDE7F6 !important;
+    border-color: #7B5EA7 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stFullScreenFrame"] {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stMetric"] {
+    background: #FFFFFF !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stMetric"] * {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button {
+    background: #FFFFFF !important;
+    color: #111827 !important;
+    border: 1px solid #D1D5DB !important;
+    box-shadow: none !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button p,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button span,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button div {
+    color: #111827 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button[kind="primary"],
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button[data-kind="primary"] {
+    background: linear-gradient(135deg, #4B2E83 0%, #7B5EA7 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid #4B2E83 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button[kind="primary"] *,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button[data-kind="primary"] * {
+    color: #FFFFFF !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button:disabled,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button[disabled] {
+    background: #F3F4F6 !important;
+    color: #6B7280 !important;
+    border-color: #D1D5DB !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button:disabled *,
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] .stButton > button[disabled] * {
+    color: #6B7280 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stDownloadButton"] button {
+    background: linear-gradient(135deg, #4B2E83 0%, #7B5EA7 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid #4B2E83 !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stDownloadButton"] button * {
+    color: #FFFFFF !important;
+    opacity: 1 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] [data-testid="stDownloadButton"] button:hover {
+    background: #2D1B69 !important;
+    border-color: #2D1B69 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] code {
+    color: #111827 !important;
+    background: #F3F4F6 !important;
+}
+body:has(#ordering-page-marker) [data-testid="stAppViewContainer"] a {
+    color: #1D4ED8 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+def page_ordering():
+    from order_matching import (
+        assign_unique_matches,
+        build_matching_report,
+        build_renamed_zip,
+        confirm_match,
+        create_ordering_task,
+        extract_document_identity,
+        parse_order_excel,
+        validate_assignments,
+    )
+
+    st.markdown("<div class='sec-hdr'>⑥ 顺序编号 · 发言材料自动匹配打包</div>", unsafe_allow_html=True)
+    st.caption("上传发言顺序 Excel 和 PDF/DOCX 材料，按顺序号自动匹配、人工复核并导出重命名 ZIP。")
+
+    order_file = st.file_uploader(
+        "1. 上传发言顺序 Excel",
+        key="ordering_order_excel",
+        help="请选择 .xlsx 文件；这里不使用系统文件选择器过滤，避免部分浏览器/macOS 将合法 Excel 文件置灰。",
+    )
+    if not order_file:
+        st.info("请先上传包含顺序号、标题、材料编号的 .xlsx 文件。")
+        return
+
+    order_bytes = order_file.getvalue()
+    try:
+        initial = parse_order_excel(order_bytes, order_file.name)
+    except Exception as exc:
+        st.error(f"无法读取顺序 Excel：{exc}")
+        return
+
+    col_sheet, col_header = st.columns([2, 1])
+    with col_sheet:
+        sheet = st.selectbox("工作表", initial.sheets, index=initial.sheets.index(initial.selected_sheet), key="ordering_sheet")
+    with col_header:
+        header_row = st.number_input("表头行", min_value=1, max_value=50, value=1, step=1, key="ordering_header_row")
+
+    parsed = parse_order_excel(order_bytes, order_file.name, sheet_name=sheet, header_row=int(header_row))
+    st.session_state.ordering_parse = parsed
+
+    st.markdown("### 顺序项预览")
+    if parsed.auto_header_row:
+        st.success(f"已自动识别表头行：第 {parsed.auto_header_row} 行")
+    if parsed.skipped_rows:
+        st.caption(f"已自动跳过 {parsed.skipped_rows} 行说明/日期分组/空格式行。")
+    mapping_cols = st.columns(3)
+    mapping_cols[0].caption(f"顺序号列：`{parsed.column_mapping.get('order_no') or '未识别'}`")
+    mapping_cols[1].caption(f"标题列：`{parsed.column_mapping.get('title') or '未识别'}`")
+    mapping_cols[2].caption(f"编号列：`{parsed.column_mapping.get('code') or '未识别'}`")
+
+    preview_df = pd.DataFrame(parsed.rows)
+    if not preview_df.empty:
+        st.dataframe(preview_df.fillna("").astype(str), width="stretch", hide_index=True, height=260)
+    if parsed.errors:
+        st.warning(f"发现 {len(parsed.errors)} 个需要处理的问题。")
+        with st.expander("查看解析问题"):
+            for err in parsed.errors:
+                st.write(f"- {err}")
+    if parsed.errors:
+        st.info("请调整工作表/表头行，或先修改 Excel 后重新上传。")
+        return
+    if not parsed.items:
+        st.warning("没有可用顺序项。")
+        return
+
+    docs = st.file_uploader(
+        "2. 上传 PDF/DOCX/PPT 材料",
+        type=["pdf", "docx", "ppt", "pptx"],
+        accept_multiple_files=True,
+        key="ordering_docs",
+    )
+    if not docs:
+        st.info("顺序项已解析，请继续上传待匹配的 PDF/DOCX 文件。")
+        return
+
+    total_size = sum(len(d.getvalue()) for d in docs)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("顺序项", len(parsed.items))
+    c2.metric("输入文件", len(docs))
+    c3.metric("总大小", f"{total_size / 1024 / 1024:.1f} MB")
+
+    st.markdown("### 处理配置")
+    cfg1, cfg2 = st.columns(2)
+    with cfg1:
+        ocr_lang = st.selectbox("OCR 语言", ["chi_sim+eng", "eng", "chi_tra+eng", "jpn+eng", "kor+eng"], key="ordering_ocr_lang")
+    with cfg2:
+        ocr_preset = st.selectbox("OCR 增强", ["scanner", "photo", "mixed", "off"], key="ordering_ocr_preset")
+    use_ollama = st.checkbox("使用 Ollama 提取文档标题/编号", value=True, key="ordering_use_ollama")
+    st.info("配置完成后点击下方“开始提取并匹配”。处理完成后会出现匹配概览、人工复核和下载区域。")
+
+    if st.button("开始提取并匹配", type="primary", width="stretch"):
+        task = create_ordering_task("顺序编号任务", order_file.name, parsed.items)
+        file_bytes: Dict[str, bytes] = {}
+        progress = st.progress(0)
+        status = st.empty()
+        for idx, uploaded in enumerate(docs, start=1):
+            raw = uploaded.getvalue()
+            status.info(f"正在处理 {idx}/{len(docs)}：{uploaded.name}")
+            candidate = extract_document_identity(
+                uploaded.name,
+                raw,
+                ocr_preset=ocr_preset,
+                ocr_lang=ocr_lang,
+                use_ollama=use_ollama,
+            )
+            task.documents.append(candidate)
+            file_bytes[candidate.file_id] = raw
+            progress.progress(idx / len(docs))
+        task.matches = assign_unique_matches(task.items, task.documents)
+        st.session_state.ordering_task = task
+        st.session_state.ordering_file_bytes = file_bytes
+        status.success("提取与匹配完成，请检查结果。")
+
+    task = st.session_state.get("ordering_task")
+    if not task:
+        return
+
+    st.markdown("---")
+    _render_ordering_results(task)
+
+
+def _render_ordering_results(task):
+    from schema import MatchStatus
+    from order_matching import build_matching_report, build_renamed_zip, confirm_match, validate_assignments
+
+    docs_by_id = {d.file_id: d for d in task.documents}
+    items_by_id = {i.item_id: i for i in task.items}
+    used_ids = {m.selected_file_id for m in task.matches if m.selected_file_id}
+    counts = {status.value: sum(1 for m in task.matches if m.status == status) for status in MatchStatus}
+    unused = len([d for d in task.documents if d.file_id not in used_ids])
+    failed = len([d for d in task.documents if d.extraction_error])
+
+    st.markdown("### 匹配概览")
+    kpis = st.columns(7)
+    kpis[0].metric("顺序项", len(task.items))
+    kpis[1].metric("输入文件", len(task.documents))
+    kpis[2].metric("已匹配", counts.get("matched", 0) + counts.get("confirmed", 0))
+    kpis[3].metric("待复核", counts.get("needs_review", 0))
+    kpis[4].metric("未匹配", counts.get("unmatched", 0))
+    kpis[5].metric("未使用", unused)
+    kpis[6].metric("失败", failed)
+
+    rows = []
+    for match in sorted(task.matches, key=lambda m: items_by_id[m.order_item_id].order_no):
+        item = items_by_id[match.order_item_id]
+        doc = docs_by_id.get(match.selected_file_id or "")
+        rows.append({
+            "顺序号": item.order_no,
+            "顺序标题": item.title,
+            "顺序编号": item.code,
+            "状态": match.status.value,
+            "匹配分数": match.score,
+            "匹配方式": match.match_method,
+            "原因": match.match_reason,
+            "已选文件": doc.filename if doc else "",
+        })
+    st.dataframe(pd.DataFrame(rows).fillna("").astype(str), width="stretch", hide_index=True)
+
+    review_matches = [m for m in task.matches if m.status in (MatchStatus.NEEDS_REVIEW, MatchStatus.UNMATCHED)]
+    if review_matches:
+        st.markdown("### 人工复核")
+        all_doc_options = {"不选择": None, **{d.filename: d.file_id for d in task.documents}}
+        for match in review_matches:
+            item = items_by_id[match.order_item_id]
+            with st.expander(f"{item.order_no:03d} · {item.title or item.code or '未命名'} · {match.status.value}", expanded=True):
+                st.write(f"顺序号：`{item.order_no:03d}`")
+                if item.time_range:
+                    st.write(f"时间：`{item.time_range}`")
+                st.write(f"标题：{item.title or '未填写'}")
+                if item.region:
+                    st.write(f"地区：`{item.region}`")
+                if item.code:
+                    st.write(f"材料编号：`{item.code}`")
+                else:
+                    st.caption("该顺序项没有材料编号，将主要根据标题/文件名进行匹配。")
+                st.write(f"匹配原因：{match.match_reason}，分数：{match.score}")
+                candidate_rows = []
+                for fid in match.candidate_file_ids or [d.file_id for d in task.documents]:
+                    d = docs_by_id.get(fid)
+                    if not d:
+                        continue
+                    occupied_by = next((items_by_id[m.order_item_id].order_no for m in task.matches if m.selected_file_id == fid), None)
+                    candidate_rows.append({
+                        "候选文件": d.filename,
+                        "提取标题": d.extracted_title,
+                        "提取编号": d.extracted_code,
+                        "发言单位": d.speaker_or_department,
+                        "原文依据": d.source_snippet,
+                        "占用": f"已被第 {int(occupied_by):03d} 项占用" if occupied_by else "未占用",
+                        "错误": d.extraction_error,
+                    })
+                if candidate_rows:
+                    st.dataframe(pd.DataFrame(candidate_rows).fillna("").astype(str), width="stretch", hide_index=True)
+                selected_label = st.selectbox("手动选择文件", list(all_doc_options.keys()), key=f"ordering_select_{match.match_id}")
+                b1, b2 = st.columns(2)
+                if b1.button("确认选择", key=f"ordering_confirm_{match.match_id}"):
+                    selected_file_id = all_doc_options[selected_label]
+                    if not selected_file_id:
+                        st.warning("请先选择一个文件，或点击“跳过该项”。")
+                    else:
+                        confirm_match(match, selected_file_id)
+                        st.rerun()
+                if b2.button("跳过该项", key=f"ordering_skip_{match.match_id}"):
+                    confirm_match(match, None, skip=True)
+                    st.rerun()
+
+    st.markdown("### 导出")
+    errors = validate_assignments(task.matches)
+    if errors:
+        pending_count = sum(1 for m in task.matches if m.status in (MatchStatus.NEEDS_REVIEW, MatchStatus.UNMATCHED))
+        failed_count = sum(1 for m in task.matches if m.status == MatchStatus.FAILED)
+        st.warning(f"ZIP 暂不可生成：还有 {pending_count} 项待复核/未匹配，{failed_count} 项失败。请在人工复核中确认或跳过后再导出。")
+        with st.expander("查看阻止 ZIP 导出的原因"):
+            for err in errors:
+                st.write(f"- {err}")
+    report_bytes = build_matching_report(task)
+    d1, d2 = st.columns(2)
+    d1.download_button(
+        "下载匹配清单.xlsx",
+        data=report_bytes,
+        file_name="匹配清单.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
+    if not errors:
+        zip_bytes = build_renamed_zip(task, st.session_state.get("ordering_file_bytes", {}))
+        d2.download_button(
+            "下载发言材料.zip",
+            data=zip_bytes,
+            file_name="发言材料.zip",
+            mime="application/zip",
+            width="stretch",
+        )
+    else:
+        d2.button("请先处理复核项后再导出 ZIP", disabled=True, width="stretch")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1652,4 +2126,5 @@ elif page == "2_extract": page_extract()
 elif page == "3_review": page_review()
 elif page == "4_console": page_console()
 elif page == "5_excel_merge": page_excel_merge()
+elif page == "6_ordering": page_ordering()
 else: page_template()

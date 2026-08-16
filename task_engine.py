@@ -288,7 +288,6 @@ def _run_extraction(task: Task, template: TemplateSnapshot, files: List[TaskFile
                     error_message=str(exc),
                 ))
     _update_task_status(task)
-    _cleanup_tmp_files(task)
 
 
 def _process_one(task: Task, template: TemplateSnapshot, tf: TaskFile) -> None:
@@ -388,7 +387,7 @@ def _extract_text(tf: TaskFile, settings: ExtractionSettings):
     with open(tf.tmp_path, "rb") as fh:
         raw = fh.read()
 
-    doc = extract(tf.filename, raw, settings)
+    doc = extract(tf.filename, raw, _extractor_settings(settings))
 
     if not doc.total_chars:
         raise ValueError(
@@ -533,7 +532,7 @@ def _update_task_status(task: Task) -> None:
 
 
 def _cleanup_tmp_files(task: Task) -> None:
-    """Delete temporary uploaded files after processing completes."""
+    """Delete temporary uploaded files owned by a task when explicitly requested."""
     for tf in task.files:
         if tf.tmp_path and os.path.exists(tf.tmp_path):
             try:
@@ -541,6 +540,25 @@ def _cleanup_tmp_files(task: Task) -> None:
             except OSError:
                 pass
         tf.tmp_path = None
+
+
+def cleanup_task_files(task_id: str) -> None:
+    """Explicit cleanup hook; normal completion keeps files for retry/export."""
+    _cleanup_tmp_files(_get_task(task_id))
+
+
+def _extractor_settings(settings: ExtractionSettings) -> Dict[str, Any]:
+    ocr_preset = settings.ocr_preset
+    ocr_enabled = ocr_preset not in {"off", "关闭", "none", "disabled"}
+    return {
+        "ocr_enabled": ocr_enabled,
+        "ocr_preset": ocr_preset,
+        "tesseract_lang": settings.effective_lang,
+        "ocr_deskew": ocr_enabled,
+        "ocr_denoise": ocr_enabled,
+        "ocr_contrast": ocr_enabled,
+        "ocr_binarize": False,
+    }
 
 
 def _file_ext(filename: str) -> str:

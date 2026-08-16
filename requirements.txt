@@ -58,6 +58,9 @@ python-pptx>=0.6.23              # Generate PowerPoint slides in export_service
 # ── Date parsing fallback ─────────────────────────────────────────
 python-dateutil>=2.9.0           # Handles edge-case date formats in agent.py
 
+# ── Tests ─────────────────────────────────────────────────────────
+pytest>=8.0.0
+
 # ── Standard library backfills (Python < 3.11) ───────────────────
 # tomllib is built-in from 3.11; no extra install needed
 # typing_extensions only needed if using 3.9

@@ -176,11 +176,13 @@ def get_result(self, file_id: str):
 
 class ExtractionSettings(BaseModel):
     """Processing parameters chosen by the user on Page 2."""
-    model:       str  = Field(default="gpt-4o-mini")
+    model:       str  = Field(default="qwen3.6:latest")
     ocr_preset:  str  = Field(default="scanner")
     ocr_lang:    str  = Field(default="eng")
     mixed_eng:   bool = Field(default=False, description="Append +eng to OCR lang for mixed-language docs")
     concurrency: int  = Field(default=4, ge=1, le=20)
+    max_tokens:  int  = Field(default=4096, ge=1)
+    timeout_seconds: int = Field(default=300, ge=1)
 
     @property
     def effective_lang(self) -> str:
@@ -311,6 +313,71 @@ class Task(BaseModel):
 
     def get_file(self, file_id: str) -> Optional[TaskFile]:
         return next((f for f in self.files if f.file_id == file_id), None)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. ORDERING / DOCUMENT PACKAGING MODELS
+# ══════════════════════════════════════════════════════════════════════════════
+
+class OrderItem(BaseModel):
+    item_id: str
+    order_no: int
+    title: Optional[str] = None
+    code: Optional[str] = None
+    source_row: int
+    time_range: Optional[str] = None
+    region: Optional[str] = None
+
+
+class DocumentCandidate(BaseModel):
+    file_id: str
+    filename: str
+    extension: str
+    size: int = 0
+    extracted_title: Optional[str] = None
+    extracted_code: Optional[str] = None
+    speaker_or_department: Optional[str] = None
+    source_snippet: Optional[str] = None
+    extraction_error: Optional[str] = None
+
+
+class MatchStatus(str, Enum):
+    MATCHED = "matched"
+    NEEDS_REVIEW = "needs_review"
+    UNMATCHED = "unmatched"
+    CONFIRMED = "confirmed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+class OrderMatch(BaseModel):
+    match_id: str
+    order_item_id: str
+    selected_file_id: Optional[str] = None
+    candidate_file_ids: List[str] = Field(default_factory=list)
+    score: float = 0.0
+    status: MatchStatus = MatchStatus.UNMATCHED
+    match_method: str = ""
+    match_reason: str = ""
+    manually_confirmed: bool = False
+    output_filename: Optional[str] = None
+
+
+class OrderingTask(BaseModel):
+    ordering_id: str
+    name: str = "顺序编号任务"
+    order_filename: str
+    items: List[OrderItem] = Field(default_factory=list)
+    documents: List[DocumentCandidate] = Field(default_factory=list)
+    matches: List[OrderMatch] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @property
+    def used_file_ids(self) -> set[str]:
+        return {
+            m.selected_file_id for m in self.matches
+            if m.selected_file_id and m.status not in (MatchStatus.SKIPPED, MatchStatus.FAILED)
+        }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
