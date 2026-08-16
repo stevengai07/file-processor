@@ -19,6 +19,10 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9          # FastAPI file uploads
 
+# ── Config ─────────────────────────────────────────────────────────
+python-dotenv>=1.0.0             # Load .env (agent, Streamlit, FastAPI)
+socksio>=1.0.0                  # HTTP client support for SOCKS proxy environments
+
 # ── Streamlit UI ──────────────────────────────────────────────────
 streamlit>=1.35.0
 
@@ -27,6 +31,7 @@ langchain>=0.2.0
 langchain-core>=0.2.0
 langchain-openai>=0.1.8          # GPT-4o, GPT-4o-mini, o1, o3
 langchain-anthropic>=0.1.15      # Claude 3.5 Sonnet, Claude 3 Opus
+langgraph>=0.2.0                 # Used by app_fastapi (langgraph.func)
 
 # ── PDF extraction ────────────────────────────────────────────────
 pdfplumber>=0.11.0               # Native text layer extraction

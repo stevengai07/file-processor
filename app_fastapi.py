@@ -117,8 +117,8 @@ def _wrap(func, *args, **kwargs):
 
 @app.get("/health", tags=["System"])
 def health():
-    from image_enhancer import PRESETS
-    return {"status": "ok", "ocr_presets": list(PRESETS.keys())}
+    from image_enhancer import Preset
+    return {"status": "ok", "ocr_presets": [preset.value for preset in Preset]}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -23,19 +23,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
+
+from dotenv import load_dotenv
 
 from schema import (
     ExtractionSettings,
     FieldType,
     FieldValue,
     IssueType,
-    ResultIssue,
+    FieldIssue as ResultIssue,
     TemplateField,
 )
 from extractor import ExtractedDocument
+
+load_dotenv()
 
 log = logging.getLogger(__name__)
 
@@ -299,7 +304,7 @@ def _call_ollama(model: str, user_prompt: str, settings: ExtractionSettings) -> 
 
     llm = ChatOpenAI(
         model="qwen3.6:latest",
-        base_url="http://127.0.0.1:11434/v1",
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
         api_key="ollama",
         temperature=0,
         max_tokens=settings.max_tokens or 4096,

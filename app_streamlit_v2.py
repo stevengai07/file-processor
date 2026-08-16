@@ -25,6 +25,9 @@ from typing import Any, Dict, List, Optional
 
 import streamlit as st
 from excel_merge_ui import page_excel_merge
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── page config (must be first Streamlit call) ────────────────────────────
 st.set_page_config(
@@ -1415,7 +1418,7 @@ def _call_chat_llm(system_prompt: str, user_msg: str, model: str) -> str:
 
         llm = ChatOpenAI(
             model="qwen3.6:latest",
-            base_url="http://127.0.0.1:11434/v1",
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
             api_key="ollama",
             temperature=0.15,
             max_tokens=3000,
