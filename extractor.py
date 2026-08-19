@@ -407,6 +407,7 @@ def _extract_pdf(raw: bytes, settings: dict) -> Tuple[List[PageText], dict]:
     OCR_MERGE_RATIO = settings.get("ocr_merge_ratio", 1.2)
     dpi = settings.get("ocr_dpi", 300)
     max_pages = settings.get("max_pages", None)
+    ocr_enabled = settings.get("ocr_enabled", True) and settings.get("ocr_preset", "default") not in {"off", "关闭", "none", "disabled"}
 
     pages: List[PageText] = []
     metadata: dict = {}
@@ -429,6 +430,10 @@ def _extract_pdf(raw: bytes, settings: dict) -> Tuple[List[PageText], dict]:
             native_chars = len(native.strip())
 
             if native_chars >= OCR_THRESHOLD:
+                pages.append(PageText(page_num=i, text=native))
+                continue
+
+            if not ocr_enabled:
                 pages.append(PageText(page_num=i, text=native))
                 continue
 
@@ -457,9 +462,9 @@ def _extract_pdf(raw: bytes, settings: dict) -> Tuple[List[PageText], dict]:
                     pages.append(PageText(page_num=i, text=native))
 
             except Exception as exc:
-                # OCR failed — fall back to whatever native text we have
-                fallback = native if native.strip() else f"[OCR failed: {exc}]"
-                pages.append(PageText(page_num=i, text=fallback))
+                # OCR failure is metadata, not document text for downstream LLMs.
+                metadata.setdefault("ocr_errors", []).append(f"page {i}: {exc}")
+                pages.append(PageText(page_num=i, text=native))
 
     return pages, metadata
 
@@ -707,6 +712,26 @@ def extract(
 
     doc.elapsed_sec = time.monotonic() - t_start
     return doc
+
+
+def extract_text(
+    file_path: str,
+    ocr_preset: str = "scanner",
+    lang: str = "eng",
+) -> str:
+    """Compatibility helper for the legacy Streamlit UI."""
+    with open(file_path, "rb") as f:
+        raw = f.read()
+
+    doc = extract(
+        file_path,
+        raw,
+        {
+            "ocr_preset": ocr_preset,
+            "tesseract_lang": lang,
+        },
+    )
+    return doc.plain_text
 
 
 # ══════════════════════════════════════════════════════════════════════════════

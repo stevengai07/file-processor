@@ -23,21 +23,36 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
+
+from dotenv import load_dotenv
 
 from schema import (
     ExtractionSettings,
     FieldType,
     FieldValue,
     IssueType,
-    ResultIssue,
+    FieldIssue as ResultIssue,
     TemplateField,
 )
 from extractor import ExtractedDocument
 
+load_dotenv()
+
 log = logging.getLogger(__name__)
+
+
+# Compatibility for the legacy Streamlit app.
+AVAILABLE_MODELS = {
+    "qwen3.6:latest": ("Ollama", "Local", "Ollama server at OLLAMA_BASE_URL"),
+}
+
+PROVIDER_ENV_KEYS = {
+    "Ollama": "OLLAMA_BASE_URL",
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -77,6 +92,91 @@ class ExtractionResult:
 
     def get_field(self, key: str) -> Optional[FieldValue]:
         return next((f for f in self.fields if f.key == key), None)
+
+
+class LegacyAgentResult:
+    """Result shape expected by the older Streamlit UI."""
+
+    def __init__(
+        self,
+        title: str = "",
+        summary: str = "",
+        key_topics: Optional[List[str]] = None,
+        entities: Optional[List[str]] = None,
+        dates: Optional[List[str]] = None,
+        action_items: Optional[List[str]] = None,
+        sentiment: str = "neutral",
+    ):
+        self.title = title
+        self.summary = summary
+        self.key_topics = key_topics or []
+        self.entities = entities or []
+        self.dates = dates or []
+        self.action_items = action_items or []
+        self.sentiment = sentiment
+
+
+def build_agent(*args, **kwargs):
+    """Legacy no-op kept for app_streamlit.py imports."""
+    return None
+
+
+def run_agent(
+    file_path: str,
+    ocr_preset: str = "scanner",
+    lang: str = "eng",
+    model: str = "qwen3.6:latest",
+) -> LegacyAgentResult:
+    """Legacy file-path entry point used by app_streamlit.py."""
+    from extractor import extract
+
+    with open(file_path, "rb") as f:
+        raw = f.read()
+
+    settings = {
+        "ocr_preset": ocr_preset,
+        "tesseract_lang": lang,
+    }
+    doc = extract(os.path.basename(file_path), raw, settings)
+    prompt = _build_legacy_summary_prompt(doc.plain_text or doc.full_text)
+    response_text = _call_ollama(model, prompt, ExtractionSettings(model=model))
+    data = _parse_json_response(response_text)
+
+    return LegacyAgentResult(
+        title=str(data.get("title") or "Untitled"),
+        summary=str(data.get("summary") or ""),
+        key_topics=_as_string_list(data.get("key_topics")),
+        entities=_as_string_list(data.get("entities")),
+        dates=_as_string_list(data.get("dates")),
+        action_items=_as_string_list(data.get("action_items")),
+        sentiment=str(data.get("sentiment") or "neutral"),
+    )
+
+
+def _build_legacy_summary_prompt(text: str) -> str:
+    return f"""
+请分析下面的文档，并只返回一个 JSON 对象，不要返回 Markdown。
+
+JSON 字段：
+- title: 文档标题或一句话标题
+- summary: 150-300 字摘要
+- key_topics: 关键词数组
+- entities: 人名、机构、地点等实体数组
+- dates: 日期或时间表达数组
+- action_items: 行动项数组
+- sentiment: positive、neutral 或 negative
+
+文档：
+{text[:12000]}
+"""
+
+
+def _as_string_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if v is not None]
+    return [str(value)]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -139,7 +239,7 @@ def run_extraction(
         filename=doc.filename,
         fields=field_values,
         issues=issues,
-        model_used=settings.model,
+        model_used="qwen3.6:latest",
         elapsed_seconds=round(elapsed, 2),
         retry_count=retry_count,
     )
@@ -299,11 +399,11 @@ def _call_ollama(model: str, user_prompt: str, settings: ExtractionSettings) -> 
 
     llm = ChatOpenAI(
         model="qwen3.6:latest",
-        base_url="http://127.0.0.1:11434/v1",
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
         api_key="ollama",
         temperature=0,
-        max_tokens=settings.max_tokens or 4096,
-        timeout=settings.timeout_seconds or 120,
+        max_tokens=getattr(settings, "max_tokens", None) or 4096,
+        timeout=getattr(settings, "timeout_seconds", None) or 120,
         max_retries=2,
     )
     try:
@@ -325,8 +425,8 @@ def _call_openai(model: str, user_prompt: str, settings: ExtractionSettings) -> 
     llm = ChatOpenAI(
         model=model,
         temperature=0,
-        max_tokens=settings.max_tokens or 4096,
-        timeout=settings.timeout_seconds or 120,
+        max_tokens=getattr(settings, "max_tokens", None) or 4096,
+        timeout=getattr(settings, "timeout_seconds", None) or 120,
         max_retries=2,
     )
 
@@ -352,8 +452,8 @@ def _call_anthropic(model: str, user_prompt: str, settings: ExtractionSettings) 
     llm = ChatAnthropic(
         model=model,
         temperature=0,
-        max_tokens=settings.max_tokens or 4096,
-        timeout=settings.timeout_seconds or 120,
+        max_tokens=getattr(settings, "max_tokens", None) or 4096,
+        timeout=getattr(settings, "timeout_seconds", None) or 120,
     )
 
     messages = [
@@ -379,7 +479,7 @@ def _call_langchain(model: str, user_prompt: str, settings: ExtractionSettings) 
     llm = ChatOpenAI(
         model=model,
         temperature=0,
-        max_tokens=settings.max_tokens or 4096,
+        max_tokens=getattr(settings, "max_tokens", None) or 4096,
     )
     messages = [
         SystemMessage(content=_SYSTEM_PROMPT),
