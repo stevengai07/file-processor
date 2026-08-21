@@ -4,7 +4,7 @@
 
 当前正式 Web 入口为 `app_streamlit_v2.py`，所有 AI 提取、对话和文档匹配功能固定使用 Ollama 模型 `qwen3.6:latest`，无需云端模型 API Key。
 
-> [English summary](#english-summary)
+> 中文 | [English](README_EN.md)
 
 ## 主要功能
 
@@ -210,57 +210,3 @@ manual_test_cases/     # 手工测试样例
 ```
 
 顺序编号工作流的样例和预期结果见 `manual_test_cases/ordering_workflow/README.md`。
-
-## English Summary
-
-This repository provides a local document-processing application built with Streamlit, FastAPI, Ollama, and Tesseract. The primary UI entry point is `app_streamlit_v2.py`. All AI-assisted workflows currently use the Ollama model `qwen3.6:latest`; cloud-provider API keys are not required.
-
-### Core Features
-
-- Excel-template-driven extraction from PDF and DOCX files
-- Native PDF text extraction with Tesseract OCR fallback for scanned pages
-- Concurrent batch processing, validation, human review, and XLSX/DOCX export
-- Multi-document AI console with DOCX, XLSX, and PPTX output
-- Local Excel merging without LLM calls
-- Excel-based document ordering, review, renaming, and ZIP packaging
-- FastAPI endpoints for templates, tasks, results, retries, and exports
-
-### Quick Start
-
-Requirements: Python 3.10+, an accessible Ollama server containing `qwen3.6:latest`, and Tesseract with the required OCR language packs.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-Create `.env` in the repository root:
-
-```dotenv
-OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
-```
-
-Start the Streamlit application:
-
-```bash
-.venv/bin/streamlit run app_streamlit_v2.py
-```
-
-Open `http://localhost:18601`.
-
-Start the API:
-
-```bash
-.venv/bin/uvicorn app_fastapi:app --reload
-```
-
-Open `http://localhost:8000/docs` for the API reference.
-
-### Important Limitations
-
-- Templates, tasks, and results are stored in process memory and are lost after restart.
-- The API task-start operation currently runs synchronously.
-- OCR requires the Tesseract executable and matching language packs.
-- The AI console truncates template context to 6,000 characters and target-document context to 16,000 characters.
-- AI and OCR output should be reviewed before operational use.
